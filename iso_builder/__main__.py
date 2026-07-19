@@ -1,4 +1,4 @@
-from iso_builder.gui.app import main
+from .gui.app import main
 
 
 if __name__ == "__main__":
