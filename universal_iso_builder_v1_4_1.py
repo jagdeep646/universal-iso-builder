@@ -1065,12 +1065,23 @@ class IsoBuilderApp(tk.Tk):
             for b in self.detected_backends:
                 self.log(f"Found: {b.name} -> {b.executable} ({b.description})")
 
-    def get_selected_backend(self) -> Backend:
+    def snapshot_build_options(self) -> BuildOptions:
+        return BuildOptions(
+            profile=self.profile_var.get(),
+            include_hidden=bool(self.include_hidden_var.get()),
+            generate_hash=bool(self.hash_var.get()),
+            optimize_duplicates=bool(self.optimize_var.get()),
+            auto_package=bool(self.auto_package_var.get()),
+            dry_run=bool(self.dry_run_var.get()),
+        )
+
+    def get_selected_backend(self, profile: Optional[str] = None) -> Backend:
         if not self.detected_backends:
             raise RuntimeError("No ISO backend found. Windows par oscdimg install karo ya PowerShell PATH check karo; Linux/macOS par xorriso/genisoimage/mkisofs/hdiutil use karo.")
 
         chosen = self.backend_var.get()
-        profile = self.profile_var.get()
+        if profile is None:
+            profile = self.profile_var.get()
         if chosen == "Auto":
             backend = select_backend(self.detected_backends, profile)
             if not backend:
@@ -1086,7 +1097,7 @@ class IsoBuilderApp(tk.Tk):
                 return b
         raise RuntimeError("Selected backend not found. Refresh backends and try again.")
 
-    def validate_paths(self) -> Tuple[Path, Path, str, str]:
+    def validate_paths(self, auto_package: Optional[bool] = None) -> Tuple[Path, Path, str, str]:
         source_text = self.source_var.get().strip()
         output_text = self.output_var.get().strip()
 
@@ -1103,7 +1114,10 @@ class IsoBuilderApp(tk.Tk):
         if not output_folder.exists() or not output_folder.is_dir():
             raise ValueError("Output folder valid nahi hai.")
 
-        if self.auto_package_var.get():
+        if auto_package is None:
+            auto_package = bool(self.auto_package_var.get())
+
+        if auto_package:
             safe_base, iso_name, label = auto_names_from_source(source)
             package_folder = output_folder / f"{safe_base}_ISO"
             output_iso = package_folder / iso_name
@@ -1131,23 +1145,33 @@ class IsoBuilderApp(tk.Tk):
 
         return source_resolved, output_iso_resolved, label, iso_name
 
-    def prepare(self) -> Tuple[Path, Path, str, Backend, ScanResult, List[str]]:
-        source, output_iso, label, _ = self.validate_paths()
-        profile = self.profile_var.get()
-        include_hidden = bool(self.include_hidden_var.get())
-        backend = self.get_selected_backend()
+    def prepare(self, options: Optional[BuildOptions] = None) -> BuildPlan:
+        if options is None:
+            options = self.snapshot_build_options()
 
-        scan = scan_source_folder(source, profile, include_hidden)
-        cmd, command_warnings = build_command(
+        source, output_iso, label, _ = self.validate_paths(options.auto_package)
+        backend = self.get_selected_backend(options.profile)
+
+        scan = scan_source_folder(source, options.profile, options.include_hidden)
+        command, command_warnings = build_command(
             backend=backend,
             source=source,
             output_iso=output_iso,
             label=label,
-            profile=profile,
-            include_hidden=include_hidden,
-            optimize_duplicates=bool(self.optimize_var.get()),
+            profile=options.profile,
+            include_hidden=options.include_hidden,
+            optimize_duplicates=options.optimize_duplicates,
         )
-        return source, output_iso, label, backend, scan, cmd + ["__WARNINGS_SPLIT__"] + command_warnings
+        return BuildPlan(
+            source=source,
+            output_iso=output_iso,
+            label=label,
+            backend=backend,
+            scan=scan,
+            command=command,
+            warnings=command_warnings,
+            options=options,
+        )
 
     def print_scan(self, scan: ScanResult) -> None:
         self.log("Scan summary:")
@@ -1188,22 +1212,19 @@ class IsoBuilderApp(tk.Tk):
 
     def show_command(self) -> None:
         try:
-            source, output_iso, label, backend, scan, cmd_and_warnings = self.prepare()
-            split_index = cmd_and_warnings.index("__WARNINGS_SPLIT__")
-            cmd = cmd_and_warnings[:split_index]
-            warnings = cmd_and_warnings[split_index + 1:]
+            plan = self.prepare()
 
-            self._set_status("Command prepared", f"Backend: {backend.name} | Output: {output_iso.name}")
+            self._set_status("Command prepared", f"Backend: {plan.backend.name} | Output: {plan.output_iso.name}")
             self.log("Prepared command:")
-            self.log(f"  Backend: {backend.name} ({backend.description})")
-            self.log(f"  Source: {source}")
-            self.log(f"  Output: {output_iso}")
-            self.log(f"  Output package folder: {output_iso.parent}")
-            self.log(f"  Label: {label}")
-            self.log(f"  Profile: {self.profile_var.get()}")
-            self.log(quote_cmd(cmd))
-            self.print_scan(scan)
-            for w in warnings:
+            self.log(f"  Backend: {plan.backend.name} ({plan.backend.description})")
+            self.log(f"  Source: {plan.source}")
+            self.log(f"  Output: {plan.output_iso}")
+            self.log(f"  Output package folder: {plan.output_iso.parent}")
+            self.log(f"  Label: {plan.label}")
+            self.log(f"  Profile: {plan.options.profile}")
+            self.log(quote_cmd(plan.command))
+            self.print_scan(plan.scan)
+            for w in plan.warnings:
                 self.log(f"Command warning: {w}")
         except Exception as e:
             messagebox.showerror("Command Error", str(e))
@@ -1216,69 +1237,53 @@ class IsoBuilderApp(tk.Tk):
             return
 
         try:
-            profile = self.profile_var.get()
-            dry_run = bool(self.dry_run_var.get())
-            generate_hash = bool(self.hash_var.get())
-            source, output_iso, label, backend, scan, cmd_and_warnings = self.prepare()
-            split_index = cmd_and_warnings.index("__WARNINGS_SPLIT__")
-            cmd = cmd_and_warnings[:split_index]
-            warnings = cmd_and_warnings[split_index + 1:]
+            options = self.snapshot_build_options()
+            plan = self.prepare(options)
         except Exception as e:
             messagebox.showerror("Build Error", str(e))
             self._set_status("Build cannot start", str(e))
             self.log(f"ERROR: {e}")
             return
 
-        if scan.warnings:
-            warn_text = "\n".join(f"- {w}" for w in scan.warnings[:8])
-            if len(scan.warnings) > 8:
-                warn_text += f"\n- ...and {len(scan.warnings) - 8} more"
+        if plan.scan.warnings:
+            warn_text = "\n".join(f"- {w}" for w in plan.scan.warnings[:8])
+            if len(plan.scan.warnings) > 8:
+                warn_text += f"\n- ...and {len(plan.scan.warnings) - 8} more"
             proceed = messagebox.askyesno("Warnings Found", f"Scan warnings mile:\n\n{warn_text}\n\nContinue?")
             if not proceed:
                 self._set_status("Build cancelled", "User cancelled after reviewing scan warnings")
                 self.log("Build cancelled by user after warnings.")
                 return
 
-        self._set_status("Building ISO...", f"Source: {source.name}")
+        self._set_status("Building ISO...", f"Source: {plan.source.name}")
         self.worker = threading.Thread(
             target=self._build_worker,
-            args=(
-                source,
-                output_iso,
-                label,
-                backend,
-                scan,
-                cmd,
-                warnings,
-                profile,
-                dry_run,
-                generate_hash,
-            ),
+            args=(plan,),
             daemon=True,
         )
         self.worker.start()
 
     def _build_worker(
         self,
-        source: Path,
-        output_iso: Path,
-        label: str,
-        backend: Backend,
-        scan: ScanResult,
-        cmd: List[str],
-        warnings: List[str],
-        profile: str,
-        dry_run: bool,
-        generate_hash: bool,
+        plan: BuildPlan,
     ) -> None:
+        source = plan.source
+        output_iso = plan.output_iso
+        label = plan.label
+        backend = plan.backend
+        scan = plan.scan
+        cmd = plan.command
+        warnings = plan.warnings
+        options = plan.options
+
         try:
             self.thread_status("Build started", f"Using backend: {backend.name}")
             self.thread_log("=" * 72)
             self.thread_log("Build started")
             self.thread_log(f"Backend: {backend.name} -> {backend.executable}")
-            self.thread_log(f"Profile: {profile}")
-            self.thread_log(f"Dry run: {'ON' if dry_run else 'OFF'}")
-            self.thread_log(f"Generate SHA256: {'ON' if generate_hash else 'OFF'}")
+            self.thread_log(f"Profile: {options.profile}")
+            self.thread_log(f"Dry run: {'ON' if options.dry_run else 'OFF'}")
+            self.thread_log(f"Generate SHA256: {'ON' if options.generate_hash else 'OFF'}")
             self.thread_log(f"Source: {source}")
             self.thread_log(f"Output: {output_iso}")
             self.thread_log(f"Output package folder: {output_iso.parent}")
@@ -1289,7 +1294,7 @@ class IsoBuilderApp(tk.Tk):
             self.thread_log("Command:")
             self.thread_log(quote_cmd(cmd))
 
-            if dry_run:
+            if options.dry_run:
                 self.thread_log("Dry run ON: actual ISO create nahi kiya gaya.")
                 self.thread_log("Build finished: DRY RUN")
                 self.thread_status("Dry run finished", f"Output preview: {output_iso.name}")
@@ -1317,7 +1322,7 @@ class IsoBuilderApp(tk.Tk):
             self.thread_log(f"ISO created: {output_iso}")
             self.thread_log(f"ISO size: {human_size(output_iso.stat().st_size)}")
 
-            if generate_hash:
+            if options.generate_hash:
                 self.thread_log("Generating SHA256...")
                 sha = calculate_sha256(output_iso)
                 hash_path = output_iso.with_suffix(output_iso.suffix + ".sha256.txt")
