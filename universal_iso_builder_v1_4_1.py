@@ -32,144 +32,32 @@ import sys
 import tempfile
 import threading
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional, Sequence, Tuple
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-
-APP_NAME = "Universal ISO Builder"
-APP_VERSION = "1.4.1"
-
-PROFILE_AUTO = "Auto - Best Compatible"
-PROFILE_MODERN = "Modern Windows - UDF + ISO"
-PROFILE_LEGACY = "Old PC - ISO9660 + Joliet"
-PROFILE_UDF_ONLY = "UDF Only - Modern"
-
-PROFILES = [PROFILE_AUTO, PROFILE_MODERN, PROFILE_LEGACY, PROFILE_UDF_ONLY]
-
-WINDOWS_OSCDIMG_PATHS = [
-    r"C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe",
-    r"C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\x86\Oscdimg\oscdimg.exe",
-    r"C:\Program Files (x86)\Windows Kits\11\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe",
-    r"C:\Program Files (x86)\Windows Kits\11\Assessment and Deployment Kit\Deployment Tools\x86\Oscdimg\oscdimg.exe",
-]
-
-WINDOWS_POWERSHELL_PATHS = [
-    r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-    r"C:\Windows\Sysnative\WindowsPowerShell\v1.0\powershell.exe",
-    r"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe",
-    r"C:\Program Files\PowerShell\7\pwsh.exe",
-    r"C:\Program Files (x86)\PowerShell\7\pwsh.exe",
-]
-
-
-@dataclass
-class Backend:
-    name: str
-    executable: str
-    priority: int
-    description: str
-    supports_udf: bool
-    supports_joliet: bool
-    supports_iso_level3: bool
-    source: str
-
-
-@dataclass
-class ScanResult:
-    files: int = 0
-    dirs: int = 0
-    total_bytes: int = 0
-    largest_file_bytes: int = 0
-    largest_file_path: str = ""
-    max_rel_path_len: int = 0
-    max_name_len: int = 0
-    non_ascii_names: int = 0
-    hidden_items: int = 0
-    symlinks: int = 0
-    unreadable: int = 0
-    empty_dirs: int = 0
-    files_over_4gb: int = 0
-    warnings: List[str] = None
-
-    def __post_init__(self) -> None:
-        if self.warnings is None:
-            self.warnings = []
-
-
-@dataclass(frozen=True)
-class BuildOptions:
-    """Immutable snapshot of user-selected settings for one build."""
-
-    profile: str
-    include_hidden: bool
-    generate_hash: bool
-    optimize_duplicates: bool
-    auto_package: bool
-    dry_run: bool
-
-
-@dataclass(frozen=True)
-class BuildRequest:
-    """Immutable snapshot of all GUI inputs needed to prepare one build."""
-
-    source_text: str
-    output_text: str
-    iso_name_text: str
-    label_text: str
-    backend_choice: str
-    options: BuildOptions
-
-
-@dataclass
-class BuildPlan:
-    """Structured build data passed between preparation and execution layers."""
-
-    source: Path
-    output_iso: Path
-    label: str
-    backend: Backend
-    scan: ScanResult
-    command: List[str]
-    warnings: List[str]
-    options: BuildOptions
-
-
-@dataclass(frozen=True)
-class BuildExecutionResult:
-    """GUI-independent outcome returned after executing one build plan."""
-
-    outcome: str
-    output_iso: Path
-    hash_path: Optional[Path] = None
-    sha256: Optional[str] = None
-    error: Optional[str] = None
-
-
-def human_size(num: int) -> str:
-    value = float(num)
-    for unit in ["B", "KB", "MB", "GB", "TB", "PB"]:
-        if value < 1024 or unit == "PB":
-            if unit == "B":
-                return f"{int(value)} {unit}"
-            return f"{value:.2f} {unit}"
-        value /= 1024
-    return f"{num} B"
-
-
-def quote_cmd(parts: Sequence[str]) -> str:
-    def q(item: str) -> str:
-        item = str(item)
-        if not item:
-            return '""'
-        if any(ch.isspace() for ch in item) or any(ch in item for ch in ['"', "'", "&", "(", ")"]):
-            return '"' + item.replace('"', '\\"') + '"'
-        return item
-
-    return " ".join(q(p) for p in parts)
+from iso_builder.constants import (
+    APP_NAME,
+    APP_VERSION,
+    PROFILE_AUTO,
+    PROFILE_LEGACY,
+    PROFILE_MODERN,
+    PROFILE_UDF_ONLY,
+    PROFILES,
+    WINDOWS_OSCDIMG_PATHS,
+    WINDOWS_POWERSHELL_PATHS,
+)
+from iso_builder.models import (
+    Backend,
+    BuildExecutionResult,
+    BuildOptions,
+    BuildPlan,
+    BuildRequest,
+    ScanResult,
+)
+from iso_builder.utils import human_size, quote_cmd
 
 
 def clean_volume_label(label: str) -> str:
