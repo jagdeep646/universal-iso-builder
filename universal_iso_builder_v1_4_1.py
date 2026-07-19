@@ -690,6 +690,139 @@ def cleanup_temp_script_from_command(cmd: Sequence[str]) -> None:
         pass
 
 
+def build_oscdimg_command(
+    executable: str,
+    source: str,
+    output_iso: str,
+    label: str,
+    profile: str,
+    include_hidden: bool,
+    optimize_duplicates: bool,
+) -> Tuple[List[str], List[str]]:
+    command = [executable, "-m", f"-l{label}"]
+    if include_hidden:
+        command.append("-h")
+    if optimize_duplicates:
+        command.append("-o")
+
+    if profile == PROFILE_UDF_ONLY:
+        command.extend(["-u2", "-udfver102"])
+    elif profile == PROFILE_LEGACY:
+        # Joliet + DOS-compatible ISO namespace. Good old-PC fallback.
+        command.append("-j1")
+    else:
+        # Best default: UDF Unicode names + ISO 9660 8.3 fallback namespace.
+        command.extend(["-u1", "-udfver102"])
+
+    command.extend([source, output_iso])
+    return command, []
+
+
+def build_xorriso_command(
+    executable: str,
+    source: str,
+    output_iso: str,
+    label: str,
+    profile: str,
+    optimize_duplicates: bool,
+) -> Tuple[List[str], List[str]]:
+    command = [executable, "-as", "mkisofs", "-V", label, "-o", output_iso]
+    warnings: List[str] = []
+
+    if optimize_duplicates:
+        # xorriso options vary; keep compatibility over risky optimization.
+        warnings.append("Duplicate optimization xorriso ke liye skip kiya gaya for compatibility.")
+
+    if profile == PROFILE_LEGACY:
+        command.extend(["-iso-level", "3", "-J", "-joliet-long", "-R"])
+    else:
+        # ISO Level 3 + Joliet + Rock Ridge + UDF for modern compatibility.
+        command.extend(["-iso-level", "3", "-J", "-joliet-long", "-R", "-udf"])
+    command.append(source)
+    return command, warnings
+
+
+def build_mkisofs_compatible_command(
+    backend_name: str,
+    executable: str,
+    source: str,
+    output_iso: str,
+    label: str,
+    profile: str,
+) -> Tuple[List[str], List[str]]:
+    warnings: List[str] = []
+    if profile in (PROFILE_AUTO, PROFILE_MODERN, PROFILE_UDF_ONLY):
+        warnings.append(
+            f"{backend_name} generally UDF nahi banata. ISO9660+Joliet fallback use hoga."
+        )
+
+    command = [
+        executable,
+        "-iso-level",
+        "3",
+        "-J",
+        "-joliet-long",
+        "-R",
+        "-V",
+        label,
+        "-o",
+        output_iso,
+        source,
+    ]
+    return command, warnings
+
+
+def build_powershell_imapi_command(
+    executable: str,
+    source: str,
+    output_iso: str,
+    label: str,
+    profile: str,
+    optimize_duplicates: bool,
+) -> Tuple[List[str], List[str]]:
+    script_path = make_windows_imapi_script()
+    command = [
+        executable,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "RemoteSigned",
+        "-File",
+        str(script_path),
+        "-Source",
+        source,
+        "-OutputIso",
+        output_iso,
+        "-Label",
+        label,
+    ]
+    warnings: List[str] = []
+    if optimize_duplicates:
+        warnings.append("Duplicate optimization Windows IMAPI fallback me available nahi hai; skip kiya gaya.")
+    if profile == PROFILE_UDF_ONLY:
+        warnings.append("Windows IMAPI fallback ISO9660+Joliet+UDF create karta hai; UDF-only control available nahi hai.")
+    warnings.append("Windows IMAPI fallback built-in hai, lekin complex/very large installer folders ke liye oscdimg zyada reliable hai.")
+    return command, warnings
+
+
+def build_hdiutil_command(
+    executable: str,
+    source: str,
+    output_iso: str,
+    label: str,
+    profile: str,
+    optimize_duplicates: bool,
+) -> Tuple[List[str], List[str]]:
+    command = [executable, "makehybrid", "-iso", "-joliet", "-default-volume-name", label]
+    if profile != PROFILE_LEGACY:
+        command.append("-udf")
+    command.extend(["-o", output_iso, source])
+
+    warnings: List[str] = []
+    if optimize_duplicates:
+        warnings.append("Duplicate optimization hdiutil ke liye available nahi hai; skip kiya gaya.")
+    return command, warnings
+
+
 def build_command(
     backend: Backend,
     source: Path,
@@ -699,98 +832,57 @@ def build_command(
     include_hidden: bool,
     optimize_duplicates: bool,
 ) -> Tuple[List[str], List[str]]:
-    warnings: List[str] = []
-    exe = backend.executable
-    source_s = str(source)
-    output_s = str(output_iso)
+    """Dispatch command creation to the selected backend-specific builder."""
+    executable = backend.executable
+    source_text = str(source)
+    output_text = str(output_iso)
 
     if backend.name == "oscdimg":
-        cmd = [exe, "-m", f"-l{label}"]
-        if include_hidden:
-            cmd.append("-h")
-        if optimize_duplicates:
-            cmd.append("-o")
-
-        if profile == PROFILE_UDF_ONLY:
-            cmd.extend(["-u2", "-udfver102"])
-        elif profile == PROFILE_LEGACY:
-            # Joliet + DOS-compatible ISO namespace. Good old-PC fallback.
-            cmd.append("-j1")
-        else:
-            # Best default: UDF Unicode names + ISO 9660 8.3 fallback namespace.
-            cmd.extend(["-u1", "-udfver102"])
-
-        cmd.extend([source_s, output_s])
-        return cmd, warnings
-
+        return build_oscdimg_command(
+            executable,
+            source_text,
+            output_text,
+            label,
+            profile,
+            include_hidden,
+            optimize_duplicates,
+        )
     if backend.name == "xorriso":
-        cmd = [exe, "-as", "mkisofs", "-V", label, "-o", output_s]
-
-        if optimize_duplicates:
-            # xorriso supports duplicate file detection via hard-link-ish behavior in some modes,
-            # but options vary. Keep compatibility over risky optimization.
-            warnings.append("Duplicate optimization xorriso ke liye skip kiya gaya for compatibility.")
-
-        if profile == PROFILE_LEGACY:
-            cmd.extend(["-iso-level", "3", "-J", "-joliet-long", "-R"])
-        else:
-            # ISO Level 3 for large files, Joliet for Windows names, Rock Ridge for POSIX names,
-            # UDF for modern Windows compatibility.
-            cmd.extend(["-iso-level", "3", "-J", "-joliet-long", "-R", "-udf"])
-        cmd.append(source_s)
-        return cmd, warnings
-
+        return build_xorriso_command(
+            executable,
+            source_text,
+            output_text,
+            label,
+            profile,
+            optimize_duplicates,
+        )
     if backend.name in ("genisoimage", "mkisofs"):
-        if profile in (PROFILE_AUTO, PROFILE_MODERN, PROFILE_UDF_ONLY):
-            warnings.append(
-                f"{backend.name} generally UDF nahi banata. ISO9660+Joliet fallback use hoga."
-            )
-        cmd = [
-            exe,
-            "-iso-level",
-            "3",
-            "-J",
-            "-joliet-long",
-            "-R",
-            "-V",
+        return build_mkisofs_compatible_command(
+            backend.name,
+            executable,
+            source_text,
+            output_text,
             label,
-            "-o",
-            output_s,
-            source_s,
-        ]
-        return cmd, warnings
-
+            profile,
+        )
     if backend.name == "powershell_imapi":
-        script_path = make_windows_imapi_script()
-        cmd = [
-            exe,
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "RemoteSigned",
-            "-File",
-            str(script_path),
-            "-Source",
-            source_s,
-            "-OutputIso",
-            output_s,
-            "-Label",
+        return build_powershell_imapi_command(
+            executable,
+            source_text,
+            output_text,
             label,
-        ]
-        if optimize_duplicates:
-            warnings.append("Duplicate optimization Windows IMAPI fallback me available nahi hai; skip kiya gaya.")
-        if profile == PROFILE_UDF_ONLY:
-            warnings.append("Windows IMAPI fallback ISO9660+Joliet+UDF create karta hai; UDF-only control available nahi hai.")
-        warnings.append("Windows IMAPI fallback built-in hai, lekin complex/very large installer folders ke liye oscdimg zyada reliable hai.")
-        return cmd, warnings
-
+            profile,
+            optimize_duplicates,
+        )
     if backend.name == "hdiutil":
-        cmd = [exe, "makehybrid", "-iso", "-joliet", "-default-volume-name", label]
-        if profile != PROFILE_LEGACY:
-            cmd.append("-udf")
-        cmd.extend(["-o", output_s, source_s])
-        if optimize_duplicates:
-            warnings.append("Duplicate optimization hdiutil ke liye available nahi hai; skip kiya gaya.")
-        return cmd, warnings
+        return build_hdiutil_command(
+            executable,
+            source_text,
+            output_text,
+            label,
+            profile,
+            optimize_duplicates,
+        )
 
     raise ValueError(f"Unsupported backend: {backend.name}")
 
