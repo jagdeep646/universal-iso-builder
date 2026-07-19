@@ -112,6 +112,18 @@ class BuildOptions:
     dry_run: bool
 
 
+@dataclass(frozen=True)
+class BuildRequest:
+    """Immutable snapshot of all GUI inputs needed to prepare one build."""
+
+    source_text: str
+    output_text: str
+    iso_name_text: str
+    label_text: str
+    backend_choice: str
+    options: BuildOptions
+
+
 @dataclass
 class BuildPlan:
     """Structured build data passed between preparation and execution layers."""
@@ -196,6 +208,57 @@ def auto_names_from_source(source: Path) -> Tuple[str, str, str]:
     iso_name = normalize_iso_name(safe_base)
     label = clean_volume_label(source.name)
     return safe_base, iso_name, label
+
+
+def resolve_build_paths(
+    source_text: str,
+    output_text: str,
+    iso_name_text: str,
+    label_text: str,
+    auto_package: bool,
+) -> Tuple[Path, Path, str, str]:
+    """Validate raw path inputs and return resolved source/output build paths."""
+    source_text = source_text.strip()
+    output_text = output_text.strip()
+
+    if not source_text:
+        raise ValueError("Source folder select karo.")
+    if not output_text:
+        raise ValueError("Output folder select karo.")
+
+    source = Path(source_text).expanduser()
+    output_folder = Path(output_text).expanduser()
+
+    if not source.exists() or not source.is_dir():
+        raise ValueError("Source folder valid nahi hai.")
+    if not output_folder.exists() or not output_folder.is_dir():
+        raise ValueError("Output folder valid nahi hai.")
+
+    if auto_package:
+        safe_base, iso_name, label = auto_names_from_source(source)
+        package_folder = output_folder / f"{safe_base}_ISO"
+        output_iso = package_folder / iso_name
+    else:
+        iso_name = normalize_iso_name(iso_name_text)
+        label = clean_volume_label(label_text)
+        output_iso = output_folder / iso_name
+
+    source_resolved = source.resolve()
+    output_iso_resolved = output_iso.resolve()
+
+    try:
+        output_iso_resolved.relative_to(source_resolved)
+    except ValueError:
+        pass
+    else:
+        raise ValueError(
+            "Output ISO source folder ke andar nahi ho sakta. Alag output folder select karo."
+        )
+
+    if output_iso_resolved.exists():
+        raise FileExistsError(f"Output ISO already exists: {output_iso_resolved}")
+
+    return source_resolved, output_iso_resolved, label, iso_name
 
 
 def is_hidden_path(path: Path) -> bool:
@@ -380,6 +443,31 @@ def select_backend(backends: List[Backend], profile: str) -> Optional[Backend]:
         return backends[0]
 
     return backends[0]
+
+
+def select_requested_backend(
+    backends: List[Backend],
+    backend_choice: str,
+    profile: str,
+) -> Backend:
+    """Resolve an Auto or explicit backend choice without reading GUI state."""
+    if not backends:
+        raise RuntimeError("No ISO backend found. Windows par oscdimg install karo ya PowerShell PATH check karo; Linux/macOS par xorriso/genisoimage/mkisofs/hdiutil use karo.")
+
+    if backend_choice == "Auto":
+        backend = select_backend(backends, profile)
+        if not backend:
+            raise RuntimeError("No compatible backend selected.")
+        return backend
+
+    selected_name = backend_choice.split(" | ", 1)[0].strip()
+    for backend in backends:
+        if backend.name == selected_name and backend.executable in backend_choice:
+            return backend
+    for backend in backends:
+        if backend.name == selected_name:
+            return backend
+    raise RuntimeError("Selected backend not found. Refresh backends and try again.")
 
 
 def scan_source_folder(source: Path, profile: str, include_hidden: bool) -> ScanResult:
@@ -694,6 +782,43 @@ def build_command(
         return cmd, warnings
 
     raise ValueError(f"Unsupported backend: {backend.name}")
+
+
+def prepare_build_plan(request: BuildRequest, backends: List[Backend]) -> BuildPlan:
+    """Create a complete build plan without reading or updating Tk widgets."""
+    options = request.options
+    source, output_iso, label, _ = resolve_build_paths(
+        source_text=request.source_text,
+        output_text=request.output_text,
+        iso_name_text=request.iso_name_text,
+        label_text=request.label_text,
+        auto_package=options.auto_package,
+    )
+    backend = select_requested_backend(
+        backends=backends,
+        backend_choice=request.backend_choice,
+        profile=options.profile,
+    )
+    scan = scan_source_folder(source, options.profile, options.include_hidden)
+    command, command_warnings = build_command(
+        backend=backend,
+        source=source,
+        output_iso=output_iso,
+        label=label,
+        profile=options.profile,
+        include_hidden=options.include_hidden,
+        optimize_duplicates=options.optimize_duplicates,
+    )
+    return BuildPlan(
+        source=source,
+        output_iso=output_iso,
+        label=label,
+        backend=backend,
+        scan=scan,
+        command=command,
+        warnings=command_warnings,
+        options=options,
+    )
 
 
 def calculate_sha256(file_path: Path, progress: Optional[Callable[[int], None]] = None) -> str:
@@ -1075,103 +1200,50 @@ class IsoBuilderApp(tk.Tk):
             dry_run=bool(self.dry_run_var.get()),
         )
 
-    def get_selected_backend(self, profile: Optional[str] = None) -> Backend:
-        if not self.detected_backends:
-            raise RuntimeError("No ISO backend found. Windows par oscdimg install karo ya PowerShell PATH check karo; Linux/macOS par xorriso/genisoimage/mkisofs/hdiutil use karo.")
+    def snapshot_build_request(self) -> BuildRequest:
+        return BuildRequest(
+            source_text=self.source_var.get(),
+            output_text=self.output_var.get(),
+            iso_name_text=self.iso_name_var.get(),
+            label_text=self.label_var.get(),
+            backend_choice=self.backend_var.get(),
+            options=self.snapshot_build_options(),
+        )
 
-        chosen = self.backend_var.get()
+    def get_selected_backend(self, profile: Optional[str] = None) -> Backend:
         if profile is None:
             profile = self.profile_var.get()
-        if chosen == "Auto":
-            backend = select_backend(self.detected_backends, profile)
-            if not backend:
-                raise RuntimeError("No compatible backend selected.")
-            return backend
-
-        selected_name = chosen.split(" | ", 1)[0].strip()
-        for b in self.detected_backends:
-            if b.name == selected_name and b.executable in chosen:
-                return b
-        for b in self.detected_backends:
-            if b.name == selected_name:
-                return b
-        raise RuntimeError("Selected backend not found. Refresh backends and try again.")
+        return select_requested_backend(
+            backends=self.detected_backends,
+            backend_choice=self.backend_var.get(),
+            profile=profile,
+        )
 
     def validate_paths(self, auto_package: Optional[bool] = None) -> Tuple[Path, Path, str, str]:
-        source_text = self.source_var.get().strip()
-        output_text = self.output_var.get().strip()
-
-        if not source_text:
-            raise ValueError("Source folder select karo.")
-        if not output_text:
-            raise ValueError("Output folder select karo.")
-
-        source = Path(source_text).expanduser()
-        output_folder = Path(output_text).expanduser()
-
-        if not source.exists() or not source.is_dir():
-            raise ValueError("Source folder valid nahi hai.")
-        if not output_folder.exists() or not output_folder.is_dir():
-            raise ValueError("Output folder valid nahi hai.")
-
         if auto_package is None:
             auto_package = bool(self.auto_package_var.get())
 
+        source, output_iso, label, iso_name = resolve_build_paths(
+            source_text=self.source_var.get(),
+            output_text=self.output_var.get(),
+            iso_name_text=self.iso_name_var.get(),
+            label_text=self.label_var.get(),
+            auto_package=auto_package,
+        )
         if auto_package:
-            safe_base, iso_name, label = auto_names_from_source(source)
-            package_folder = output_folder / f"{safe_base}_ISO"
-            output_iso = package_folder / iso_name
             self.iso_name_var.set(iso_name)
             self.label_var.set(label)
-        else:
-            iso_name = normalize_iso_name(self.iso_name_var.get())
-            label = clean_volume_label(self.label_var.get())
-            output_iso = output_folder / iso_name
+        return source, output_iso, label, iso_name
 
-        source_resolved = source.resolve()
-        output_iso_resolved = output_iso.resolve()
+    def prepare(self, request: Optional[BuildRequest] = None) -> BuildPlan:
+        if request is None:
+            request = self.snapshot_build_request()
 
-        try:
-            output_iso_resolved.relative_to(source_resolved)
-        except ValueError:
-            pass
-        else:
-            raise ValueError(
-                "Output ISO source folder ke andar nahi ho sakta. Alag output folder select karo."
-            )
-
-        if output_iso_resolved.exists():
-            raise FileExistsError(f"Output ISO already exists: {output_iso_resolved}")
-
-        return source_resolved, output_iso_resolved, label, iso_name
-
-    def prepare(self, options: Optional[BuildOptions] = None) -> BuildPlan:
-        if options is None:
-            options = self.snapshot_build_options()
-
-        source, output_iso, label, _ = self.validate_paths(options.auto_package)
-        backend = self.get_selected_backend(options.profile)
-
-        scan = scan_source_folder(source, options.profile, options.include_hidden)
-        command, command_warnings = build_command(
-            backend=backend,
-            source=source,
-            output_iso=output_iso,
-            label=label,
-            profile=options.profile,
-            include_hidden=options.include_hidden,
-            optimize_duplicates=options.optimize_duplicates,
-        )
-        return BuildPlan(
-            source=source,
-            output_iso=output_iso,
-            label=label,
-            backend=backend,
-            scan=scan,
-            command=command,
-            warnings=command_warnings,
-            options=options,
-        )
+        plan = prepare_build_plan(request, self.detected_backends)
+        if request.options.auto_package:
+            self.iso_name_var.set(plan.output_iso.name)
+            self.label_var.set(plan.label)
+        return plan
 
     def print_scan(self, scan: ScanResult) -> None:
         self.log("Scan summary:")
@@ -1237,8 +1309,8 @@ class IsoBuilderApp(tk.Tk):
             return
 
         try:
-            options = self.snapshot_build_options()
-            plan = self.prepare(options)
+            request = self.snapshot_build_request()
+            plan = self.prepare(request)
         except Exception as e:
             messagebox.showerror("Build Error", str(e))
             self._set_status("Build cannot start", str(e))
