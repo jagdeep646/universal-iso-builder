@@ -871,6 +871,7 @@ class IsoBuilderApp(tk.Tk):
         self.hash_var = tk.BooleanVar(value=True)
         self.optimize_var = tk.BooleanVar(value=False)
         self.auto_package_var = tk.BooleanVar(value=True)
+        self.auto_package_text_var = tk.StringVar(value="Auto name + package folder: ON")
         self.dry_run_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Ready")
         self.summary_var = tk.StringVar(value="Select a source folder to begin")
@@ -1042,7 +1043,13 @@ class IsoBuilderApp(tk.Tk):
 
         ttk.Checkbutton(left_checks, text="Include hidden files", variable=self.include_hidden_var, style="App.TCheckbutton").pack(anchor="w", pady=2)
         ttk.Checkbutton(left_checks, text="Generate SHA256 hash", variable=self.hash_var, style="App.TCheckbutton").pack(anchor="w", pady=2)
-        ttk.Checkbutton(right_checks, text="Auto name + package folder", variable=self.auto_package_var, style="App.TCheckbutton").pack(anchor="w", pady=2)
+        ttk.Checkbutton(
+            right_checks,
+            textvariable=self.auto_package_text_var,
+            variable=self.auto_package_var,
+            command=self._on_auto_package_changed,
+            style="App.TCheckbutton",
+        ).pack(anchor="w", pady=2)
         ttk.Checkbutton(right_checks, text="Optimize duplicate files (when supported)", variable=self.optimize_var, style="App.TCheckbutton").pack(anchor="w", pady=2)
         ttk.Checkbutton(right_checks, text="Dry run only", variable=self.dry_run_var, style="App.TCheckbutton").pack(anchor="w", pady=2)
 
@@ -1120,6 +1127,22 @@ class IsoBuilderApp(tk.Tk):
         self.status_var.set(title)
         if hint:
             self.summary_var.set(hint)
+
+    def _on_auto_package_changed(self) -> None:
+        enabled = bool(self.auto_package_var.get())
+        state = "ON" if enabled else "OFF"
+        self.auto_package_text_var.set(f"Auto name + package folder: {state}")
+        self.log(f"Auto package changed: {state}")
+        if enabled:
+            self._set_status(
+                "Auto package enabled",
+                "Source name will control the package folder, ISO name, and volume label",
+            )
+        else:
+            self._set_status(
+                "Manual naming enabled",
+                "ISO file name and volume label fields will be used without auto naming",
+            )
 
     def pick_source(self) -> None:
         folder = filedialog.askdirectory(title="Select source setup folder")
@@ -1294,6 +1317,7 @@ class IsoBuilderApp(tk.Tk):
             self.log(f"  Output package folder: {plan.output_iso.parent}")
             self.log(f"  Label: {plan.label}")
             self.log(f"  Profile: {plan.options.profile}")
+            self.log(f"  Auto package: {'ON' if plan.options.auto_package else 'OFF'}")
             self.log(quote_cmd(plan.command))
             self.print_scan(plan.scan)
             for w in plan.warnings:
@@ -1356,6 +1380,7 @@ class IsoBuilderApp(tk.Tk):
             self.thread_log(f"Profile: {options.profile}")
             self.thread_log(f"Dry run: {'ON' if options.dry_run else 'OFF'}")
             self.thread_log(f"Generate SHA256: {'ON' if options.generate_hash else 'OFF'}")
+            self.thread_log(f"Auto package: {'ON' if options.auto_package else 'OFF'}")
             self.thread_log(f"Source: {source}")
             self.thread_log(f"Output: {output_iso}")
             self.thread_log(f"Output package folder: {output_iso.parent}")
