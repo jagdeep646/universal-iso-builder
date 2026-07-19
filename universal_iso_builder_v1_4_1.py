@@ -100,6 +100,32 @@ class ScanResult:
             self.warnings = []
 
 
+@dataclass(frozen=True)
+class BuildOptions:
+    """Immutable snapshot of user-selected settings for one build."""
+
+    profile: str
+    include_hidden: bool
+    generate_hash: bool
+    optimize_duplicates: bool
+    auto_package: bool
+    dry_run: bool
+
+
+@dataclass
+class BuildPlan:
+    """Structured build data passed between preparation and execution layers."""
+
+    source: Path
+    output_iso: Path
+    label: str
+    backend: Backend
+    scan: ScanResult
+    command: List[str]
+    warnings: List[str]
+    options: BuildOptions
+
+
 def human_size(num: int) -> str:
     value = float(num)
     for unit in ["B", "KB", "MB", "GB", "TB", "PB"]:
