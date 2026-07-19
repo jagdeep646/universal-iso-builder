@@ -138,6 +138,17 @@ class BuildPlan:
     options: BuildOptions
 
 
+@dataclass(frozen=True)
+class BuildExecutionResult:
+    """GUI-independent outcome returned after executing one build plan."""
+
+    outcome: str
+    output_iso: Path
+    hash_path: Optional[Path] = None
+    sha256: Optional[str] = None
+    error: Optional[str] = None
+
+
 def human_size(num: int) -> str:
     value = float(num)
     for unit in ["B", "KB", "MB", "GB", "TB", "PB"]:
@@ -849,6 +860,98 @@ def run_process(cmd: List[str], log: Callable[[str], None]) -> int:
     return int(process.returncode)
 
 
+def execute_build_plan(
+    plan: BuildPlan,
+    log: Callable[[str], None],
+) -> BuildExecutionResult:
+    """Execute a prepared build without reading or updating Tk widgets."""
+    source = plan.source
+    output_iso = plan.output_iso
+    label = plan.label
+    backend = plan.backend
+    scan = plan.scan
+    cmd = plan.command
+    warnings = plan.warnings
+    options = plan.options
+
+    try:
+        log("=" * 72)
+        log("Build started")
+        log(f"Backend: {backend.name} -> {backend.executable}")
+        log(f"Profile: {options.profile}")
+        log(f"Dry run: {'ON' if options.dry_run else 'OFF'}")
+        log(f"Generate SHA256: {'ON' if options.generate_hash else 'OFF'}")
+        log(f"Auto package: {'ON' if options.auto_package else 'OFF'}")
+        log(f"Source: {source}")
+        log(f"Output: {output_iso}")
+        log(f"Output package folder: {output_iso.parent}")
+        log(f"Volume label: {label}")
+        log(f"Files: {scan.files} | Size: {human_size(scan.total_bytes)}")
+        for warning in warnings:
+            log(f"Command warning: {warning}")
+        log("Command:")
+        log(quote_cmd(cmd))
+
+        if options.dry_run:
+            log("Dry run ON: actual ISO create nahi kiya gaya.")
+            log("Build finished: DRY RUN")
+            return BuildExecutionResult(
+                outcome="DRY RUN",
+                output_iso=output_iso,
+            )
+
+        output_iso.parent.mkdir(parents=True, exist_ok=True)
+        return_code = run_process(cmd, log)
+        if return_code != 0:
+            raise RuntimeError(f"ISO backend failed with exit code {return_code}")
+
+        if not output_iso.exists():
+            candidates = [
+                output_iso.with_suffix(output_iso.suffix + ".iso"),
+                output_iso.with_suffix(".cdr"),
+                Path(str(output_iso) + ".iso"),
+            ]
+            found = next((path for path in candidates if path.exists()), None)
+            if found:
+                log(f"Backend created file at {found}; renaming to {output_iso}")
+                found.rename(output_iso)
+
+        if not output_iso.exists() or output_iso.stat().st_size == 0:
+            raise RuntimeError("ISO output file create nahi hua ya empty hai.")
+
+        log(f"ISO created: {output_iso}")
+        log(f"ISO size: {human_size(output_iso.stat().st_size)}")
+
+        hash_path: Optional[Path] = None
+        sha256: Optional[str] = None
+        if options.generate_hash:
+            log("Generating SHA256...")
+            sha256 = calculate_sha256(output_iso)
+            hash_path = output_iso.with_suffix(output_iso.suffix + ".sha256.txt")
+            hash_path.write_text(f"{sha256}  {output_iso.name}\n", encoding="utf-8")
+            log(f"SHA256: {sha256}")
+            log(f"Hash saved: {hash_path}")
+
+        log(f"Package folder ready: {output_iso.parent}")
+        log("Build finished: PASS")
+        return BuildExecutionResult(
+            outcome="PASS",
+            output_iso=output_iso,
+            hash_path=hash_path,
+            sha256=sha256,
+        )
+    except Exception as error:
+        log(f"ERROR: {error}")
+        log("Build finished: FAIL")
+        return BuildExecutionResult(
+            outcome="FAIL",
+            output_iso=output_iso,
+            error=str(error),
+        )
+    finally:
+        cleanup_temp_script_from_command(cmd)
+
+
 
 class IsoBuilderApp(tk.Tk):
     def __init__(self) -> None:
@@ -1363,79 +1466,18 @@ class IsoBuilderApp(tk.Tk):
         self,
         plan: BuildPlan,
     ) -> None:
-        source = plan.source
-        output_iso = plan.output_iso
-        label = plan.label
-        backend = plan.backend
-        scan = plan.scan
-        cmd = plan.command
-        warnings = plan.warnings
-        options = plan.options
+        self.thread_status("Build started", f"Using backend: {plan.backend.name}")
+        result = execute_build_plan(plan, self.thread_log)
 
-        try:
-            self.thread_status("Build started", f"Using backend: {backend.name}")
-            self.thread_log("=" * 72)
-            self.thread_log("Build started")
-            self.thread_log(f"Backend: {backend.name} -> {backend.executable}")
-            self.thread_log(f"Profile: {options.profile}")
-            self.thread_log(f"Dry run: {'ON' if options.dry_run else 'OFF'}")
-            self.thread_log(f"Generate SHA256: {'ON' if options.generate_hash else 'OFF'}")
-            self.thread_log(f"Auto package: {'ON' if options.auto_package else 'OFF'}")
-            self.thread_log(f"Source: {source}")
-            self.thread_log(f"Output: {output_iso}")
-            self.thread_log(f"Output package folder: {output_iso.parent}")
-            self.thread_log(f"Volume label: {label}")
-            self.thread_log(f"Files: {scan.files} | Size: {human_size(scan.total_bytes)}")
-            for w in warnings:
-                self.thread_log(f"Command warning: {w}")
-            self.thread_log("Command:")
-            self.thread_log(quote_cmd(cmd))
-
-            if options.dry_run:
-                self.thread_log("Dry run ON: actual ISO create nahi kiya gaya.")
-                self.thread_log("Build finished: DRY RUN")
-                self.thread_status("Dry run finished", f"Output preview: {output_iso.name}")
-                return
-
-            output_iso.parent.mkdir(parents=True, exist_ok=True)
-            rc = run_process(cmd, self.thread_log)
-            if rc != 0:
-                raise RuntimeError(f"ISO backend failed with exit code {rc}")
-
-            if not output_iso.exists():
-                candidates = [
-                    output_iso.with_suffix(output_iso.suffix + ".iso"),
-                    output_iso.with_suffix(".cdr"),
-                    Path(str(output_iso) + ".iso"),
-                ]
-                found = next((p for p in candidates if p.exists()), None)
-                if found:
-                    self.thread_log(f"Backend created file at {found}; renaming to {output_iso}")
-                    found.rename(output_iso)
-
-            if not output_iso.exists() or output_iso.stat().st_size == 0:
-                raise RuntimeError("ISO output file create nahi hua ya empty hai.")
-
-            self.thread_log(f"ISO created: {output_iso}")
-            self.thread_log(f"ISO size: {human_size(output_iso.stat().st_size)}")
-
-            if options.generate_hash:
-                self.thread_log("Generating SHA256...")
-                sha = calculate_sha256(output_iso)
-                hash_path = output_iso.with_suffix(output_iso.suffix + ".sha256.txt")
-                hash_path.write_text(f"{sha}  {output_iso.name}\n", encoding="utf-8")
-                self.thread_log(f"SHA256: {sha}")
-                self.thread_log(f"Hash saved: {hash_path}")
-
-            self.thread_log(f"Package folder ready: {output_iso.parent}")
-            self.thread_log("Build finished: PASS")
-            self.thread_status("Build finished: PASS", f"Package folder ready: {output_iso.parent}")
-        except Exception as e:
-            self.thread_log(f"ERROR: {e}")
-            self.thread_log("Build finished: FAIL")
-            self.thread_status("Build finished: FAIL", str(e))
-        finally:
-            cleanup_temp_script_from_command(cmd)
+        if result.outcome == "DRY RUN":
+            self.thread_status("Dry run finished", f"Output preview: {result.output_iso.name}")
+        elif result.outcome == "PASS":
+            self.thread_status(
+                "Build finished: PASS",
+                f"Package folder ready: {result.output_iso.parent}",
+            )
+        else:
+            self.thread_status("Build finished: FAIL", result.error or "Unknown build error")
 
 
 def main() -> None:
