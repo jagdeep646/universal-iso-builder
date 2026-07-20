@@ -1,4 +1,5 @@
 import hashlib
+import locale
 import subprocess
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -29,6 +30,33 @@ def calculate_sha256(file_path: Path, progress: Optional[Callable[[int], None]] 
     return hasher.hexdigest()
 
 
+def preferred_process_output_encoding() -> str:
+    """Return the operating system's preferred encoding for redirected output."""
+    return locale.getpreferredencoding(False) or "utf-8"
+
+
+def decode_process_output(
+    raw_output: bytes,
+    fallback_encoding: Optional[str] = None,
+) -> str:
+    """Decode backend output without assuming every Windows tool emits UTF-8."""
+    fallback = fallback_encoding or preferred_process_output_encoding()
+    encodings = ["utf-8"]
+    if fallback.lower().replace("_", "-") not in {"utf-8", "utf8"}:
+        encodings.append(fallback)
+
+    for encoding in encodings:
+        try:
+            return raw_output.decode(encoding, errors="strict")
+        except (LookupError, UnicodeDecodeError):
+            continue
+
+    try:
+        return raw_output.decode(fallback, errors="replace")
+    except LookupError:
+        return raw_output.decode("utf-8", errors="replace")
+
+
 def run_process(
     command: List[str],
     log: Callable[[str], None],
@@ -41,16 +69,13 @@ def run_process(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
     )
     if cancellation is not None:
         cancellation.register_process(process)
     try:
         assert process.stdout is not None
         for line in process.stdout:
-            log(line.rstrip())
+            log(decode_process_output(line).rstrip())
         process.wait()
         if cancellation is not None:
             cancellation.raise_if_cancelled()
