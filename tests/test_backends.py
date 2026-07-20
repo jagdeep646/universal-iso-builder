@@ -117,6 +117,41 @@ class BackendSelectionTests(unittest.TestCase):
 
 
 class BackendCommandTests(unittest.TestCase):
+    def test_hidden_exclusion_is_supported_only_by_oscdimg(self) -> None:
+        oscdimg = make_backend("oscdimg")
+        command, _ = build_command(
+            oscdimg,
+            Path("C:/Source"),
+            Path("D:/Output/Test.iso"),
+            "TEST",
+            PROFILE_AUTO,
+            False,
+            False,
+        )
+        self.assertNotIn("-h", command)
+
+        for name in (
+            "xorriso",
+            "genisoimage",
+            "mkisofs",
+            "powershell_imapi",
+            "hdiutil",
+        ):
+            with self.subTest(backend=name):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    rf"Selected backend '{name}'.*cannot reliably exclude hidden items",
+                ):
+                    build_command(
+                        make_backend(name),
+                        Path("C:/Source"),
+                        Path("D:/Output/Test.iso"),
+                        "TEST",
+                        PROFILE_AUTO,
+                        False,
+                        False,
+                    )
+
     def test_all_backend_command_snapshots(self) -> None:
         source = Path("C:/Source Folder")
         output = Path("D:/Output Folder/Test.iso")

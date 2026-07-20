@@ -1,6 +1,6 @@
 from typing import List
 
-from .backends.commands import build_command
+from .backends.commands import build_command, validate_hidden_file_option
 from .backends.detection import select_requested_backend
 from .models import Backend, BuildPlan, BuildRequest
 from .naming import resolve_build_paths
@@ -22,6 +22,7 @@ def prepare_build_plan(request: BuildRequest, backends: List[Backend]) -> BuildP
         backend_choice=request.backend_choice,
         profile=options.profile,
     )
+    validate_hidden_file_option(backend, options.include_hidden)
     scan = scan_source_folder(source, options.profile, options.include_hidden)
     command, command_warnings = build_command(
         backend=backend,

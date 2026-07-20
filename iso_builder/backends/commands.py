@@ -11,6 +11,15 @@ from ..models import Backend
 from .imapi import make_windows_imapi_script
 
 
+def validate_hidden_file_option(backend: Backend, include_hidden: bool) -> None:
+    """Reject hidden-file exclusion when the selected backend cannot guarantee it."""
+    if not include_hidden and backend.name != "oscdimg":
+        raise RuntimeError(
+            f"Selected backend '{backend.name}' cannot reliably exclude hidden items. "
+            "Turn Include hidden files ON or select oscdimg."
+        )
+
+
 def build_oscdimg_command(
     executable: str,
     source: str,
@@ -150,6 +159,8 @@ def build_command(
     optimize_duplicates: bool,
 ) -> Tuple[List[str], List[str]]:
     """Dispatch command creation to the selected backend-specific builder."""
+    validate_hidden_file_option(backend, include_hidden)
+
     executable = backend.executable
     source_text = str(source)
     output_text = str(output_iso)
