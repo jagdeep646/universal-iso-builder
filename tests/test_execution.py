@@ -117,6 +117,27 @@ class ExecutionTests(unittest.TestCase):
             self.assertFalse(output_iso.exists())
             self.assertEqual(logs[-1], "Build finished: FAIL")
 
+    def test_storage_preflight_failure_stops_backend_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as root_dir:
+            output_iso = Path(root_dir) / "blocked.iso"
+            plan = make_plan(output_iso, dry_run=False, generate_hash=False)
+            logs = []
+
+            with (
+                patch.object(
+                    execution,
+                    "validate_output_storage",
+                    side_effect=RuntimeError("Insufficient free space for ISO output."),
+                ),
+                patch.object(execution, "run_process") as run_process,
+            ):
+                result = execution.execute_build_plan(plan, logs.append)
+
+            self.assertEqual(result.outcome, "FAIL")
+            self.assertIn("Insufficient free space", result.error or "")
+            run_process.assert_not_called()
+            self.assertFalse(output_iso.exists())
+
     def test_execute_detects_missing_output(self) -> None:
         with tempfile.TemporaryDirectory() as root_dir:
             output_iso = Path(root_dir) / "missing.iso"

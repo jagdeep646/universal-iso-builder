@@ -5,6 +5,7 @@ from typing import Callable, List, Optional
 
 from .backends.imapi import cleanup_temp_script_from_command
 from .models import BuildExecutionResult, BuildPlan
+from .preflight import validate_output_storage
 from .utils import human_size, quote_cmd
 
 
@@ -76,6 +77,13 @@ def execute_build_plan(
                 output_iso=output_iso,
             )
 
+        storage = validate_output_storage(output_iso, scan.total_bytes)
+        log(
+            "Storage preflight: "
+            f"required estimate {human_size(storage.required_bytes)} | "
+            f"free {human_size(storage.free_bytes)} | "
+            f"filesystem {storage.filesystem or 'NOT VERIFIED'}"
+        )
         output_iso.parent.mkdir(parents=True, exist_ok=True)
         return_code = run_process(command, log)
         if return_code != 0:

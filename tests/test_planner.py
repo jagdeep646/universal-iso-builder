@@ -1,10 +1,11 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 try:
     from iso_builder.constants import PROFILE_AUTO
-    from iso_builder.models import Backend, BuildOptions, BuildRequest
+    from iso_builder.models import Backend, BuildOptions, BuildRequest, ScanResult
     from iso_builder.planner import prepare_build_plan
 except ModuleNotFoundError:
     from universal_iso_builder_v1_4_1 import (
@@ -12,11 +13,149 @@ except ModuleNotFoundError:
         Backend,
         BuildOptions,
         BuildRequest,
+        ScanResult,
         prepare_build_plan,
     )
 
 
 class PlannerTests(unittest.TestCase):
+    def test_storage_preflight_failure_stops_before_command_creation(self) -> None:
+        with tempfile.TemporaryDirectory() as root_dir:
+            root = Path(root_dir)
+            source = root / "source"
+            output = root / "output"
+            source.mkdir()
+            output.mkdir()
+            (source / "payload.bin").write_bytes(b"abc")
+
+            backend = Backend(
+                name="powershell_imapi",
+                executable="powershell.exe",
+                priority=1,
+                description="test",
+                supports_udf=True,
+                supports_joliet=True,
+                supports_iso_level3=False,
+                source="test",
+            )
+            request = BuildRequest(
+                source_text=str(source),
+                output_text=str(output),
+                iso_name_text="Manual.iso",
+                label_text="MANUAL",
+                backend_choice="Auto",
+                options=BuildOptions(
+                    profile=PROFILE_AUTO,
+                    include_hidden=True,
+                    generate_hash=False,
+                    optimize_duplicates=False,
+                    auto_package=False,
+                    dry_run=False,
+                ),
+            )
+
+            with (
+                patch(
+                    "iso_builder.planner.validate_output_storage",
+                    side_effect=RuntimeError("Insufficient free space for ISO output."),
+                ),
+                patch("iso_builder.planner.build_command") as build_command,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "Insufficient free space"):
+                    prepare_build_plan(request, [backend])
+
+            build_command.assert_not_called()
+
+    def test_dry_run_skips_storage_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as root_dir:
+            root = Path(root_dir)
+            source = root / "source"
+            output = root / "output"
+            source.mkdir()
+            output.mkdir()
+            (source / "payload.bin").write_bytes(b"abc")
+
+            backend = Backend(
+                name="oscdimg",
+                executable="oscdimg.exe",
+                priority=1,
+                description="test",
+                supports_udf=True,
+                supports_joliet=True,
+                supports_iso_level3=True,
+                source="test",
+            )
+            request = BuildRequest(
+                source_text=str(source),
+                output_text=str(output),
+                iso_name_text="Manual.iso",
+                label_text="MANUAL",
+                backend_choice="Auto",
+                options=BuildOptions(
+                    profile=PROFILE_AUTO,
+                    include_hidden=True,
+                    generate_hash=False,
+                    optimize_duplicates=False,
+                    auto_package=False,
+                    dry_run=True,
+                ),
+            )
+
+            with patch("iso_builder.planner.validate_output_storage") as validate:
+                prepare_build_plan(request, [backend])
+
+            validate.assert_not_called()
+
+    def test_prepare_warns_about_long_absolute_output_path(self) -> None:
+        backend = Backend(
+            name="oscdimg",
+            executable="oscdimg.exe",
+            priority=1,
+            description="test",
+            supports_udf=True,
+            supports_joliet=True,
+            supports_iso_level3=True,
+            source="test",
+        )
+        options = BuildOptions(
+            profile=PROFILE_AUTO,
+            include_hidden=True,
+            generate_hash=False,
+            optimize_duplicates=False,
+            auto_package=False,
+            dry_run=True,
+        )
+        request = BuildRequest(
+            source_text="source",
+            output_text="output",
+            iso_name_text="Manual.iso",
+            label_text="MANUAL",
+            backend_choice="Auto",
+            options=options,
+        )
+        source = Path("C:/source")
+        output_iso = Path("D:/") / ("x" * 241 + ".iso")
+
+        with (
+            patch(
+                "iso_builder.planner.resolve_build_paths",
+                return_value=(source, output_iso, "MANUAL", output_iso.name),
+            ),
+            patch(
+                "iso_builder.planner.scan_source_folder",
+                return_value=ScanResult(files=1),
+            ),
+            patch(
+                "iso_builder.planner.build_command",
+                return_value=(["oscdimg.exe"], []),
+            ),
+        ):
+            plan = prepare_build_plan(request, [backend])
+
+        self.assertTrue(
+            any("Output ISO absolute path" in warning for warning in plan.warnings)
+        )
+
     def test_prepare_rejects_hidden_exclusion_for_unsupported_backend(self) -> None:
         with tempfile.TemporaryDirectory() as root_dir:
             root = Path(root_dir)

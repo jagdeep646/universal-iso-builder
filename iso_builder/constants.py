@@ -8,6 +8,8 @@ PROFILE_UDF_ONLY = "UDF Only - Modern"
 
 PROFILES = [PROFILE_AUTO, PROFILE_MODERN, PROFILE_LEGACY, PROFILE_UDF_ONLY]
 
+PATH_WARNING_THRESHOLD = 240
+
 WINDOWS_OSCDIMG_PATHS = [
     r"C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe",
     r"C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\x86\Oscdimg\oscdimg.exe",
