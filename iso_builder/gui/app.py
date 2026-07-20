@@ -68,6 +68,7 @@ from iso_builder.models import (
     BuildPlan,
     BuildRequest,
     ScanResult,
+    UIEvent,
 )
 from iso_builder.execution import calculate_sha256, execute_build_plan, run_process
 from iso_builder.naming import (
@@ -89,8 +90,9 @@ class IsoBuilderApp(tk.Tk):
         self.geometry("1180x820")
         self.minsize(1040, 720)
 
-        self.ui_queue: "queue.Queue[Tuple[str, str, str]]" = queue.Queue()
+        self.ui_queue: "queue.Queue[UIEvent]" = queue.Queue()
         self.worker: Optional[threading.Thread] = None
+        self.active_operation: Optional[str] = None
         self.detected_backends: List[Backend] = []
 
         self.source_var = tk.StringVar()
@@ -406,22 +408,127 @@ class IsoBuilderApp(tk.Tk):
         self.update_idletasks()
 
     def thread_log(self, msg: str) -> None:
-        self.ui_queue.put(("log", msg, ""))
+        self.ui_queue.put(UIEvent(kind="log", message=msg))
 
     def thread_status(self, title: str, hint: str = "") -> None:
-        self.ui_queue.put(("status", title, hint))
+        self.ui_queue.put(UIEvent(kind="status", message=title, detail=hint))
+
+    def thread_operation_finished(self, operation: str) -> None:
+        self.ui_queue.put(UIEvent(kind="operation_finished", message=operation))
+
+    def _operation_is_active(self) -> bool:
+        if self.active_operation is not None:
+            return True
+        return self.worker is not None and self.worker.is_alive()
+
+    def _begin_operation(self, operation: str) -> bool:
+        if self._operation_is_active():
+            return False
+        self.active_operation = operation
+        return True
+
+    def _finish_operation(self, operation: str) -> None:
+        if self.active_operation == operation:
+            self.active_operation = None
 
     def _process_ui_queue(self) -> None:
         try:
             while True:
-                event_type, value, detail = self.ui_queue.get_nowait()
-                if event_type == "log":
-                    self.log(value)
-                elif event_type == "status":
-                    self._set_status(value, detail)
+                event = self.ui_queue.get_nowait()
+                if event.kind == "log":
+                    self.log(event.message)
+                elif event.kind == "status":
+                    self._set_status(event.message, event.detail)
+                elif event.kind == "scan_complete":
+                    if isinstance(event.payload, ScanResult):
+                        self._handle_scan_complete(event.payload)
+                    else:
+                        self._handle_operation_error("scan", "Invalid scan result received.")
+                elif event.kind == "plan_complete":
+                    if isinstance(event.payload, BuildPlan):
+                        self._handle_plan_complete(event.message, event.payload)
+                    else:
+                        self._handle_operation_error(event.message, "Invalid build plan received.")
+                elif event.kind == "operation_error":
+                    self._handle_operation_error(event.message, event.detail)
+                elif event.kind == "operation_finished":
+                    self._finish_operation(event.message)
         except queue.Empty:
             pass
         self.after(150, self._process_ui_queue)
+
+    def _handle_scan_complete(self, scan: ScanResult) -> None:
+        self._set_status("Scan complete", f"{scan.files} files | {human_size(scan.total_bytes)} total size")
+        self.print_scan(scan)
+
+    def _handle_plan_complete(self, operation: str, plan: BuildPlan) -> None:
+        if plan.options.auto_package:
+            self.iso_name_var.set(plan.output_iso.name)
+            self.label_var.set(plan.label)
+
+        if operation == "command":
+            self._display_prepared_command(plan)
+        elif operation == "build":
+            self._handle_build_plan_ready(plan)
+        else:
+            self._handle_operation_error(operation, "Unknown plan operation.")
+
+    def _display_prepared_command(self, plan: BuildPlan) -> None:
+        self._set_status("Command prepared", f"Backend: {plan.backend.name} | Output: {plan.output_iso.name}")
+        self.log("Prepared command:")
+        self.log(f"  Backend: {plan.backend.name} ({plan.backend.description})")
+        self.log(f"  Source: {plan.source}")
+        self.log(f"  Output: {plan.output_iso}")
+        self.log(f"  Output package folder: {plan.output_iso.parent}")
+        self.log(f"  Label: {plan.label}")
+        self.log(f"  Profile: {plan.options.profile}")
+        self.log(f"  Auto package: {'ON' if plan.options.auto_package else 'OFF'}")
+        self.log(quote_cmd(plan.command))
+        self.print_scan(plan.scan)
+        for warning in plan.warnings:
+            self.log(f"Command warning: {warning}")
+
+    def _handle_build_plan_ready(self, plan: BuildPlan) -> None:
+        if plan.scan.warnings:
+            warn_text = "\n".join(f"- {warning}" for warning in plan.scan.warnings[:8])
+            if len(plan.scan.warnings) > 8:
+                warn_text += f"\n- ...and {len(plan.scan.warnings) - 8} more"
+            proceed = messagebox.askyesno(
+                "Warnings Found",
+                f"Scan warnings mile:\n\n{warn_text}\n\nContinue?",
+            )
+            if not proceed:
+                self._finish_operation("build")
+                self._set_status("Build cancelled", "User cancelled after reviewing scan warnings")
+                self.log("Build cancelled by user after warnings.")
+                return
+
+        try:
+            self._set_status("Building ISO...", f"Source: {plan.source.name}")
+            self.worker = threading.Thread(
+                target=self._build_worker,
+                args=(plan,),
+                daemon=True,
+            )
+            self.worker.start()
+        except Exception as error:
+            self._finish_operation("build")
+            self._handle_operation_error("build", str(error))
+
+    def _handle_operation_error(self, operation: str, error: str) -> None:
+        if operation == "scan":
+            messagebox.showerror("Scan Error", error)
+            self._set_status("Scan failed", error)
+        elif operation == "command":
+            messagebox.showerror("Command Error", error)
+            self._set_status("Command failed", error)
+        elif operation == "build":
+            messagebox.showerror("Build Error", error)
+            self._set_status("Build cannot start", error)
+        else:
+            messagebox.showerror("Operation Error", error)
+            self._set_status("Operation failed", error)
+        self.log(f"ERROR: {error}")
 
     def clear_logs(self) -> None:
         self.log_text.delete("1.0", "end")
@@ -521,6 +628,10 @@ class IsoBuilderApp(tk.Tk):
             self.log("Warnings: none")
 
     def scan_only(self) -> None:
+        if not self._begin_operation("scan"):
+            messagebox.showwarning("Busy", "Another operation is already running.")
+            return
+
         try:
             source_text = self.source_var.get().strip()
             if not source_text:
@@ -529,84 +640,105 @@ class IsoBuilderApp(tk.Tk):
             source = Path(source_text).expanduser()
             if not source.exists() or not source.is_dir():
                 raise ValueError("Source folder valid nahi hai.")
-            scan = scan_source_folder(source, self.profile_var.get(), bool(self.include_hidden_var.get()))
-            self._set_status("Scan complete", f"{scan.files} files | {human_size(scan.total_bytes)} total size")
-            self.print_scan(scan)
+            profile = self.profile_var.get()
+            include_hidden = bool(self.include_hidden_var.get())
+
+            self._set_status("Scanning folder...", str(source))
+            self.worker = threading.Thread(
+                target=self._scan_worker,
+                args=(source, profile, include_hidden),
+                daemon=True,
+            )
+            self.worker.start()
         except Exception as e:
+            self._finish_operation("scan")
             messagebox.showerror("Scan Error", str(e))
             self._set_status("Scan failed", str(e))
             self.log(f"ERROR: {e}")
 
-    def show_command(self) -> None:
+    def _scan_worker(self, source: Path, profile: str, include_hidden: bool) -> None:
         try:
-            plan = self.prepare()
+            scan = scan_source_folder(source, profile, include_hidden)
+            self.ui_queue.put(UIEvent(kind="scan_complete", payload=scan))
+        except Exception as error:
+            self.ui_queue.put(UIEvent(kind="operation_error", message="scan", detail=str(error)))
+        finally:
+            self.thread_operation_finished("scan")
 
-            self._set_status("Command prepared", f"Backend: {plan.backend.name} | Output: {plan.output_iso.name}")
-            self.log("Prepared command:")
-            self.log(f"  Backend: {plan.backend.name} ({plan.backend.description})")
-            self.log(f"  Source: {plan.source}")
-            self.log(f"  Output: {plan.output_iso}")
-            self.log(f"  Output package folder: {plan.output_iso.parent}")
-            self.log(f"  Label: {plan.label}")
-            self.log(f"  Profile: {plan.options.profile}")
-            self.log(f"  Auto package: {'ON' if plan.options.auto_package else 'OFF'}")
-            self.log(quote_cmd(plan.command))
-            self.print_scan(plan.scan)
-            for w in plan.warnings:
-                self.log(f"Command warning: {w}")
-        except Exception as e:
-            messagebox.showerror("Command Error", str(e))
-            self._set_status("Command failed", str(e))
-            self.log(f"ERROR: {e}")
+    def _prepare_worker(
+        self,
+        operation: str,
+        request: BuildRequest,
+        backends: List[Backend],
+    ) -> None:
+        plan_ready = False
+        try:
+            plan = prepare_build_plan(request, backends)
+            self.ui_queue.put(UIEvent(kind="plan_complete", message=operation, payload=plan))
+            plan_ready = True
+        except Exception as error:
+            self.ui_queue.put(UIEvent(kind="operation_error", message=operation, detail=str(error)))
+        finally:
+            if operation != "build" or not plan_ready:
+                self.thread_operation_finished(operation)
 
-    def start_build(self) -> None:
-        if self.worker and self.worker.is_alive():
-            messagebox.showwarning("Busy", "Build already running.")
+    def show_command(self) -> None:
+        if not self._begin_operation("command"):
+            messagebox.showwarning("Busy", "Another operation is already running.")
             return
 
         try:
             request = self.snapshot_build_request()
-            plan = self.prepare(request)
+            backends = list(self.detected_backends)
+            self._set_status("Preparing command...", "Scanning source folder")
+            self.worker = threading.Thread(
+                target=self._prepare_worker,
+                args=("command", request, backends),
+                daemon=True,
+            )
+            self.worker.start()
         except Exception as e:
-            messagebox.showerror("Build Error", str(e))
-            self._set_status("Build cannot start", str(e))
-            self.log(f"ERROR: {e}")
+            self._finish_operation("command")
+            self._handle_operation_error("command", str(e))
+
+    def start_build(self) -> None:
+        if not self._begin_operation("build"):
+            messagebox.showwarning("Busy", "Another operation is already running.")
             return
 
-        if plan.scan.warnings:
-            warn_text = "\n".join(f"- {w}" for w in plan.scan.warnings[:8])
-            if len(plan.scan.warnings) > 8:
-                warn_text += f"\n- ...and {len(plan.scan.warnings) - 8} more"
-            proceed = messagebox.askyesno("Warnings Found", f"Scan warnings mile:\n\n{warn_text}\n\nContinue?")
-            if not proceed:
-                self._set_status("Build cancelled", "User cancelled after reviewing scan warnings")
-                self.log("Build cancelled by user after warnings.")
-                return
-
-        self._set_status("Building ISO...", f"Source: {plan.source.name}")
-        self.worker = threading.Thread(
-            target=self._build_worker,
-            args=(plan,),
-            daemon=True,
-        )
-        self.worker.start()
+        try:
+            request = self.snapshot_build_request()
+            backends = list(self.detected_backends)
+            self._set_status("Preparing build...", "Scanning source folder")
+            self.worker = threading.Thread(
+                target=self._prepare_worker,
+                args=("build", request, backends),
+                daemon=True,
+            )
+            self.worker.start()
+        except Exception as e:
+            self._finish_operation("build")
+            self._handle_operation_error("build", str(e))
 
     def _build_worker(
         self,
         plan: BuildPlan,
     ) -> None:
-        self.thread_status("Build started", f"Using backend: {plan.backend.name}")
-        result = execute_build_plan(plan, self.thread_log)
+        try:
+            self.thread_status("Build started", f"Using backend: {plan.backend.name}")
+            result = execute_build_plan(plan, self.thread_log)
 
-        if result.outcome == "DRY RUN":
-            self.thread_status("Dry run finished", f"Output preview: {result.output_iso.name}")
-        elif result.outcome == "PASS":
-            self.thread_status(
-                "Build finished: PASS",
-                f"Package folder ready: {result.output_iso.parent}",
-            )
-        else:
-            self.thread_status("Build finished: FAIL", result.error or "Unknown build error")
+            if result.outcome == "DRY RUN":
+                self.thread_status("Dry run finished", f"Output preview: {result.output_iso.name}")
+            elif result.outcome == "PASS":
+                self.thread_status(
+                    "Build finished: PASS",
+                    f"Package folder ready: {result.output_iso.parent}",
+                )
+            else:
+                self.thread_status("Build finished: FAIL", result.error or "Unknown build error")
+        finally:
+            self.thread_operation_finished("build")
 
 
 def main() -> None:

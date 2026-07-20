@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 @dataclass
@@ -84,3 +84,13 @@ class BuildExecutionResult:
     hash_path: Optional[Path] = None
     sha256: Optional[str] = None
     error: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class UIEvent:
+    """Immutable message passed from a worker thread to the Tk main thread."""
+
+    kind: str
+    message: str = ""
+    detail: str = ""
+    payload: Any = None
