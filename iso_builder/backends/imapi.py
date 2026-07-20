@@ -19,7 +19,7 @@ $ErrorActionPreference = "Stop"
 if (!(Test-Path -LiteralPath $Source -PathType Container)) {
     throw "Source folder not found: $Source"
 }
-$outDir = Split-Path -LiteralPath $OutputIso -Parent
+$outDir = [System.IO.Path]::GetDirectoryName($OutputIso)
 if (!(Test-Path -LiteralPath $outDir -PathType Container)) {
     throw "Output folder not found: $outDir"
 }

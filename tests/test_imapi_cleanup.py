@@ -1,9 +1,15 @@
+import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from iso_builder.backends.imapi import cleanup_temp_script_from_command
+from iso_builder.backends.imapi import (
+    cleanup_temp_script_from_command,
+    make_windows_imapi_script,
+)
 from iso_builder.constants import PROFILE_AUTO
 from iso_builder.execution import execute_build_plan
 from iso_builder.gui.app import IsoBuilderApp
@@ -151,6 +157,43 @@ class ImapiDiscardedPlanCleanupTests(unittest.TestCase):
 
 
 class ImapiExecutionCleanupTests(unittest.TestCase):
+    @unittest.skipUnless(
+        os.name == "nt" and shutil.which("powershell.exe"),
+        "Windows PowerShell is required for IMAPI script parameter binding.",
+    )
+    def test_generated_script_binds_parameters_on_windows_powershell(self) -> None:
+        script_path = make_windows_imapi_script()
+        try:
+            with tempfile.TemporaryDirectory() as root_dir:
+                root = Path(root_dir)
+                result = subprocess.run(
+                    [
+                        shutil.which("powershell.exe") or "powershell.exe",
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "RemoteSigned",
+                        "-File",
+                        str(script_path),
+                        "-Source",
+                        str(root / "missing-source"),
+                        "-OutputIso",
+                        str(root / "output.iso"),
+                        "-Label",
+                        "TEST",
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    errors="replace",
+                    check=False,
+                )
+        finally:
+            script_path.unlink(missing_ok=True)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Source folder not found", result.stdout)
+        self.assertNotIn("AmbiguousParameterSet", result.stdout)
+
     def test_dry_run_cleans_temp_script(self) -> None:
         with tempfile.TemporaryDirectory() as root_dir:
             root = Path(root_dir)
