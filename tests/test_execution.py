@@ -44,7 +44,7 @@ def make_plan(output_iso: Path, *, dry_run: bool, generate_hash: bool) -> BuildP
         label="TEST",
         backend=backend,
         scan=ScanResult(files=1, total_bytes=3),
-        command=["fake.exe"],
+        command=["fake.exe", "--output", str(output_iso)],
         warnings=[],
         options=options,
     )
@@ -84,9 +84,11 @@ class ExecutionTests(unittest.TestCase):
             plan = make_plan(output_iso, dry_run=False, generate_hash=True)
             logs = []
 
-            def fake_run_process(command, log) -> int:
-                self.assertEqual(command, ["fake.exe"])
-                output_iso.write_bytes(b"abc")
+            def fake_run_process(command, log, cancellation=None) -> int:
+                temporary_output = Path(command[-1])
+                self.assertNotEqual(temporary_output, output_iso)
+                self.assertIn(".partial.iso", temporary_output.name)
+                temporary_output.write_bytes(b"abc")
                 return 0
 
             with patch.object(execution, "run_process", side_effect=fake_run_process):
@@ -109,13 +111,50 @@ class ExecutionTests(unittest.TestCase):
             plan = make_plan(output_iso, dry_run=False, generate_hash=False)
             logs = []
 
-            with patch.object(execution, "run_process", return_value=7):
+            def fake_run_process(command, log, cancellation=None) -> int:
+                Path(command[-1]).write_bytes(b"partial")
+                return 7
+
+            with patch.object(execution, "run_process", side_effect=fake_run_process):
                 result = execution.execute_build_plan(plan, logs.append)
 
             self.assertEqual(result.outcome, "FAIL")
             self.assertEqual(result.error, "ISO backend failed with exit code 7")
             self.assertFalse(output_iso.exists())
+            self.assertEqual(list(Path(root_dir).glob(".*.partial.iso")), [])
             self.assertEqual(logs[-1], "Build finished: FAIL")
+
+    def test_race_created_final_iso_is_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as root_dir:
+            output_iso = Path(root_dir) / "race.iso"
+            plan = make_plan(output_iso, dry_run=False, generate_hash=False)
+
+            def fake_run_process(command, log, cancellation=None) -> int:
+                Path(command[-1]).write_bytes(b"new complete ISO")
+                output_iso.write_bytes(b"existing ISO")
+                return 0
+
+            with patch.object(execution, "run_process", side_effect=fake_run_process):
+                result = execution.execute_build_plan(plan, lambda _message: None)
+
+            self.assertEqual(result.outcome, "FAIL")
+            self.assertIn("appeared during build", result.error or "")
+            self.assertEqual(output_iso.read_bytes(), b"existing ISO")
+            self.assertEqual(list(Path(root_dir).glob(".*.partial.iso")), [])
+
+    def test_existing_final_iso_stops_before_backend_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as root_dir:
+            output_iso = Path(root_dir) / "existing.iso"
+            output_iso.write_bytes(b"existing ISO")
+            plan = make_plan(output_iso, dry_run=False, generate_hash=False)
+
+            with patch.object(execution, "run_process") as run_process:
+                result = execution.execute_build_plan(plan, lambda _message: None)
+
+            self.assertEqual(result.outcome, "FAIL")
+            self.assertIn("already exists", result.error or "")
+            self.assertEqual(output_iso.read_bytes(), b"existing ISO")
+            run_process.assert_not_called()
 
     def test_storage_preflight_failure_stops_backend_execution(self) -> None:
         with tempfile.TemporaryDirectory() as root_dir:

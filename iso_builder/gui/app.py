@@ -61,6 +61,7 @@ from iso_builder.constants import (
     WINDOWS_OSCDIMG_PATHS,
     WINDOWS_POWERSHELL_PATHS,
 )
+from iso_builder.cancellation import BuildCancellation
 from iso_builder.models import (
     Backend,
     BuildExecutionResult,
@@ -93,7 +94,11 @@ class IsoBuilderApp(tk.Tk):
         self.ui_queue: "queue.Queue[UIEvent]" = queue.Queue()
         self.worker: Optional[threading.Thread] = None
         self.active_operation: Optional[str] = None
+        self.build_cancellation: Optional[BuildCancellation] = None
+        self.close_requested = False
+        self.close_force_deadline: Optional[float] = None
         self.detected_backends: List[Backend] = []
+        self.protocol("WM_DELETE_WINDOW", self._on_close_requested)
 
         self.source_var = tk.StringVar()
         self.output_var = tk.StringVar()
@@ -422,6 +427,8 @@ class IsoBuilderApp(tk.Tk):
         return self.worker is not None and self.worker.is_alive()
 
     def _begin_operation(self, operation: str) -> bool:
+        if getattr(self, "close_requested", False):
+            return False
         if self._operation_is_active():
             return False
         self.active_operation = operation
@@ -430,6 +437,52 @@ class IsoBuilderApp(tk.Tk):
     def _finish_operation(self, operation: str) -> None:
         if self.active_operation == operation:
             self.active_operation = None
+            if operation == "build":
+                self.build_cancellation = None
+
+    def _on_close_requested(self) -> None:
+        if self.close_requested:
+            return
+        if self.active_operation != "build":
+            self.destroy()
+            return
+
+        proceed = messagebox.askyesno(
+            "Build in progress",
+            "ISO build abhi running hai. Build cancel karke app safely close karein?",
+        )
+        if not proceed:
+            return
+
+        self.close_requested = True
+        self.close_force_deadline = time.monotonic() + 3.0
+        if self.build_cancellation is None:
+            self.build_cancellation = BuildCancellation()
+        self.build_cancellation.cancel()
+        self._set_status(
+            "Cancelling build...",
+            "Waiting for backend to stop safely",
+        )
+        self.log("Close requested: active build cancellation started.")
+        self.after(50, self._wait_for_build_close)
+
+    def _wait_for_build_close(self) -> None:
+        if not self.close_requested:
+            return
+
+        worker_alive = self.worker is not None and self.worker.is_alive()
+        if self.active_operation is None and not worker_alive:
+            self.destroy()
+            return
+
+        cancellation = self.build_cancellation
+        force = (
+            self.close_force_deadline is not None
+            and time.monotonic() >= self.close_force_deadline
+        )
+        if cancellation is not None:
+            cancellation.cancel(force=force)
+        self.after(100, self._wait_for_build_close)
 
     def _process_ui_queue(self) -> None:
         try:
@@ -462,6 +515,12 @@ class IsoBuilderApp(tk.Tk):
         self.print_scan(scan)
 
     def _handle_plan_complete(self, operation: str, plan: BuildPlan) -> None:
+        if operation == "build" and getattr(self, "close_requested", False):
+            cleanup_temp_script_from_command(plan.command)
+            self._finish_operation("build")
+            self.log("Build cancelled before backend execution.")
+            return
+
         if plan.options.auto_package:
             self.iso_name_var.set(plan.output_iso.name)
             self.label_var.set(plan.label)
@@ -521,6 +580,11 @@ class IsoBuilderApp(tk.Tk):
             self._handle_operation_error("build", str(error))
 
     def _handle_operation_error(self, operation: str, error: str) -> None:
+        if operation == "build" and getattr(self, "close_requested", False):
+            self._set_status("Build cancelled", error)
+            self.log(f"Build stopped while closing: {error}")
+            return
+
         if operation == "scan":
             messagebox.showerror("Scan Error", error)
             self._set_status("Scan failed", error)
@@ -713,6 +777,7 @@ class IsoBuilderApp(tk.Tk):
             return
 
         try:
+            self.build_cancellation = BuildCancellation()
             request = self.snapshot_build_request()
             backends = list(self.detected_backends)
             self._set_status("Preparing build...", "Scanning source folder")
@@ -732,7 +797,11 @@ class IsoBuilderApp(tk.Tk):
     ) -> None:
         try:
             self.thread_status("Build started", f"Using backend: {plan.backend.name}")
-            result = execute_build_plan(plan, self.thread_log)
+            result = execute_build_plan(
+                plan,
+                self.thread_log,
+                getattr(self, "build_cancellation", None),
+            )
 
             if result.outcome == "DRY RUN":
                 self.thread_status("Dry run finished", f"Output preview: {result.output_iso.name}")
@@ -740,6 +809,11 @@ class IsoBuilderApp(tk.Tk):
                 self.thread_status(
                     "Build finished: PASS",
                     f"Package folder ready: {result.output_iso.parent}",
+                )
+            elif result.outcome == "CANCELLED":
+                self.thread_status(
+                    "Build cancelled",
+                    "Backend stopped and temporary output cleaned",
                 )
             else:
                 self.thread_status("Build finished: FAIL", result.error or "Unknown build error")
