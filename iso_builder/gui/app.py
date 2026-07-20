@@ -467,7 +467,10 @@ class IsoBuilderApp(tk.Tk):
             self.label_var.set(plan.label)
 
         if operation == "command":
-            self._display_prepared_command(plan)
+            try:
+                self._display_prepared_command(plan)
+            finally:
+                cleanup_temp_script_from_command(plan.command)
         elif operation == "build":
             self._handle_build_plan_ready(plan)
         else:
@@ -498,6 +501,7 @@ class IsoBuilderApp(tk.Tk):
                 f"Scan warnings mile:\n\n{warn_text}\n\nContinue?",
             )
             if not proceed:
+                cleanup_temp_script_from_command(plan.command)
                 self._finish_operation("build")
                 self._set_status("Build cancelled", "User cancelled after reviewing scan warnings")
                 self.log("Build cancelled by user after warnings.")
@@ -512,6 +516,7 @@ class IsoBuilderApp(tk.Tk):
             )
             self.worker.start()
         except Exception as error:
+            cleanup_temp_script_from_command(plan.command)
             self._finish_operation("build")
             self._handle_operation_error("build", str(error))
 
