@@ -620,6 +620,7 @@ class IsoBuilderApp(tk.Tk):
         self.log(f"  Total size: {human_size(scan.total_bytes)}")
         self.log(f"  Largest file: {human_size(scan.largest_file_bytes)} | {scan.largest_file_path}")
         self.log(f"  Max relative path length: {scan.max_rel_path_len}")
+        self.log(f"  Max absolute path length: {scan.max_abs_path_len}")
         self.log(f"  Max single name length: {scan.max_name_len}")
         self.log(f"  Unicode/non-ASCII paths: {scan.non_ascii_names}")
         self.log(f"  Hidden items: {scan.hidden_items}")

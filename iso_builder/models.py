@@ -23,6 +23,7 @@ class ScanResult:
     largest_file_bytes: int = 0
     largest_file_path: str = ""
     max_rel_path_len: int = 0
+    max_abs_path_len: int = 0
     max_name_len: int = 0
     non_ascii_names: int = 0
     hidden_items: int = 0

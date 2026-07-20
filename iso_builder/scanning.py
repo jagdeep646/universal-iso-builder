@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from .constants import PROFILE_LEGACY
+from .constants import PATH_WARNING_THRESHOLD, PROFILE_LEGACY
 from .models import ScanResult
 
 
@@ -25,8 +25,17 @@ def is_hidden_path(path: Path) -> bool:
 def scan_source_folder(source: Path, profile: str, include_hidden: bool) -> ScanResult:
     result = ScanResult()
     source = source.resolve()
+    result.max_abs_path_len = len(str(source))
 
-    for root, dirnames, filenames in os.walk(source, topdown=True, followlinks=False):
+    def record_walk_error(_error: OSError) -> None:
+        result.unreadable += 1
+
+    for root, dirnames, filenames in os.walk(
+        source,
+        topdown=True,
+        onerror=record_walk_error,
+        followlinks=False,
+    ):
         root_path = Path(root)
         result.dirs += len(dirnames)
 
@@ -37,6 +46,7 @@ def scan_source_folder(source: Path, profile: str, include_hidden: bool) -> Scan
             item = root_path / dirname
             rel = item.relative_to(source)
             result.max_rel_path_len = max(result.max_rel_path_len, len(str(rel)))
+            result.max_abs_path_len = max(result.max_abs_path_len, len(str(item)))
             result.max_name_len = max(result.max_name_len, len(dirname))
             if any(ord(ch) > 127 for ch in str(rel)):
                 result.non_ascii_names += 1
@@ -53,6 +63,7 @@ def scan_source_folder(source: Path, profile: str, include_hidden: bool) -> Scan
                 rel = item
 
             result.max_rel_path_len = max(result.max_rel_path_len, len(str(rel)))
+            result.max_abs_path_len = max(result.max_abs_path_len, len(str(item)))
             result.max_name_len = max(result.max_name_len, len(filename))
             if any(ord(ch) > 127 for ch in str(rel)):
                 result.non_ascii_names += 1
@@ -81,7 +92,10 @@ def scan_source_folder(source: Path, profile: str, include_hidden: bool) -> Scan
         result.warnings.append("Source folder empty lag raha hai. ISO banega, lekin useful nahi hoga.")
 
     if result.unreadable:
-        result.warnings.append(f"{result.unreadable} file(s) readable nahi hain. Build fail ho sakta hai.")
+        result.warnings.append(
+            f"{result.unreadable} file/folder item(s) readable nahi hain. "
+            "Scan incomplete ho sakta hai aur build fail ho sakta hai."
+        )
 
     if result.symlinks:
         result.warnings.append(
@@ -98,9 +112,15 @@ def scan_source_folder(source: Path, profile: str, include_hidden: bool) -> Scan
             f"{result.files_over_4gb} file(s) 4GB se badi hain. UDF/ISO-level-3 mode use karo; pure old ISO mode avoid karo."
         )
 
-    if result.max_rel_path_len > 240:
+    if result.max_rel_path_len > PATH_WARNING_THRESHOLD:
         result.warnings.append(
             f"Long paths detected: max relative path {result.max_rel_path_len} chars. Old Windows/tools par issue aa sakta hai."
+        )
+
+    if result.max_abs_path_len > PATH_WARNING_THRESHOLD:
+        result.warnings.append(
+            f"Long absolute path detected: max absolute path {result.max_abs_path_len} chars. "
+            "Old Windows/tools ya disabled long-path support par issue aa sakta hai."
         )
 
     if result.max_name_len > 100:

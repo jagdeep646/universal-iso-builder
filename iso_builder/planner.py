@@ -2,6 +2,7 @@ from typing import List
 
 from .backends.commands import build_command, validate_hidden_file_option
 from .backends.detection import select_requested_backend
+from .constants import PATH_WARNING_THRESHOLD
 from .models import Backend, BuildPlan, BuildRequest
 from .naming import resolve_build_paths
 from .scanning import scan_source_folder
@@ -33,6 +34,11 @@ def prepare_build_plan(request: BuildRequest, backends: List[Backend]) -> BuildP
         include_hidden=options.include_hidden,
         optimize_duplicates=options.optimize_duplicates,
     )
+    if len(str(output_iso)) > PATH_WARNING_THRESHOLD:
+        command_warnings.append(
+            f"Output ISO absolute path {len(str(output_iso))} chars hai. "
+            "Old Windows/tools ya disabled long-path support par build fail ho sakta hai."
+        )
     return BuildPlan(
         source=source,
         output_iso=output_iso,
