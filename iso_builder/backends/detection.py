@@ -165,7 +165,13 @@ def select_backend(backends: List[Backend], profile: str) -> Optional[Backend]:
     if not backends:
         return None
 
-    if profile in (PROFILE_AUTO, PROFILE_MODERN, PROFILE_UDF_ONLY):
+    if profile == PROFILE_UDF_ONLY:
+        return next(
+            (backend for backend in backends if backend.supports_udf),
+            None,
+        )
+
+    if profile in (PROFILE_AUTO, PROFILE_MODERN):
         udf_backends = [backend for backend in backends if backend.supports_udf]
         if udf_backends:
             return udf_backends[0]
@@ -180,6 +186,14 @@ def select_backend(backends: List[Backend], profile: str) -> Optional[Backend]:
     return backends[0]
 
 
+def validate_backend_for_profile(backend: Backend, profile: str) -> Backend:
+    if profile == PROFILE_UDF_ONLY and not backend.supports_udf:
+        raise RuntimeError(
+            f"Selected backend '{backend.name}' does not support UDF required by the UDF Only profile."
+        )
+    return backend
+
+
 def select_requested_backend(
     backends: List[Backend],
     backend_choice: str,
@@ -192,14 +206,18 @@ def select_requested_backend(
     if backend_choice == "Auto":
         backend = select_backend(backends, profile)
         if not backend:
+            if profile == PROFILE_UDF_ONLY:
+                raise RuntimeError(
+                    "No UDF-capable ISO backend found for the UDF Only profile."
+                )
             raise RuntimeError("No compatible backend selected.")
-        return backend
+        return validate_backend_for_profile(backend, profile)
 
     selected_name = backend_choice.split(" | ", 1)[0].strip()
     for backend in backends:
         if backend.name == selected_name and backend.executable in backend_choice:
-            return backend
+            return validate_backend_for_profile(backend, profile)
     for backend in backends:
         if backend.name == selected_name:
-            return backend
+            return validate_backend_for_profile(backend, profile)
     raise RuntimeError("Selected backend not found. Refresh backends and try again.")

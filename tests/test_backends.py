@@ -76,8 +76,12 @@ class BackendSelectionTests(unittest.TestCase):
         self.assertIs(select_backend(self.backends, PROFILE_UDF_ONLY), self.udf)
         self.assertIs(select_backend(self.backends, PROFILE_LEGACY), self.joliet)
 
-    def test_select_backend_preserves_current_fallback_behavior(self) -> None:
-        self.assertIs(select_backend([self.first], PROFILE_UDF_ONLY), self.first)
+    def test_udf_only_has_no_fallback_to_non_udf_backend(self) -> None:
+        self.assertIsNone(select_backend([self.first], PROFILE_UDF_ONLY))
+
+    def test_auto_and_modern_preserve_non_udf_fallback(self) -> None:
+        self.assertIs(select_backend([self.first], PROFILE_AUTO), self.first)
+        self.assertIs(select_backend([self.first], PROFILE_MODERN), self.first)
         self.assertIsNone(select_backend([], PROFILE_AUTO))
 
     def test_select_requested_backend_auto_and_explicit(self) -> None:
@@ -90,6 +94,20 @@ class BackendSelectionTests(unittest.TestCase):
             select_requested_backend(self.backends, choice, PROFILE_AUTO),
             self.joliet,
         )
+        udf_choice = f"{self.udf.name} | {self.udf.executable}"
+        self.assertIs(
+            select_requested_backend(self.backends, udf_choice, PROFILE_UDF_ONLY),
+            self.udf,
+        )
+
+    def test_udf_only_auto_rejects_when_no_udf_backend_exists(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "No UDF-capable ISO backend found"):
+            select_requested_backend([self.first], "Auto", PROFILE_UDF_ONLY)
+
+    def test_udf_only_rejects_explicit_non_udf_backend(self) -> None:
+        choice = f"{self.joliet.name} | {self.joliet.executable}"
+        with self.assertRaisesRegex(RuntimeError, "does not support UDF"):
+            select_requested_backend(self.backends, choice, PROFILE_UDF_ONLY)
 
     def test_select_requested_backend_rejects_missing_backend(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "No ISO backend found"):
