@@ -55,6 +55,10 @@ class PowerShellBuildScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root_dir:
             root = Path(root_dir)
             shutil.copy2(source_script, root / "build_exe.ps1")
+            shutil.copy2(
+                project_root / "windows_version_info.txt",
+                root / "windows_version_info.txt",
+            )
             (root / "universal_iso_builder_v1_4_1.py").write_text(
                 "print('test entrypoint')\n",
                 encoding="utf-8",
@@ -151,6 +155,10 @@ class BatchBuildScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root_dir:
             root = Path(root_dir)
             shutil.copy2(project_root / filename, root / filename)
+            shutil.copy2(
+                project_root / "windows_version_info.txt",
+                root / "windows_version_info.txt",
+            )
             (root / "universal_iso_builder_v1_4_1.py").write_text(
                 "print('test entrypoint')\n",
                 encoding="utf-8",
@@ -273,6 +281,18 @@ class BuildScriptPolicyTests(unittest.TestCase):
                 content = self.read(filename).lower()
                 self.assertIn("import tkinter", content)
                 self.assertIn("missing module named tkinter", content)
+
+    def test_build_scripts_use_version_2_metadata_file(self) -> None:
+        for filename in (
+            "build_exe.ps1",
+            "build_exe.bat",
+            "build_onefile_optional.bat",
+        ):
+            with self.subTest(filename=filename):
+                content = self.read(filename).lower()
+                self.assertIn("2.0", content)
+                self.assertIn("windows_version_info.txt", content)
+                self.assertIn("--version-file", content)
 
 
 if __name__ == "__main__":

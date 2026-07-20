@@ -4,9 +4,11 @@
 $ErrorActionPreference = "Stop"
 
 $AppName = "Universal ISO Builder"
+$AppVersion = "2.0"
 $PyInstallerVersion = "6.21.0"
 $ScriptRoot = $PSScriptRoot
 $AppScript = Join-Path $ScriptRoot "universal_iso_builder_v1_4_1.py"
+$VersionFile = Join-Path $ScriptRoot "windows_version_info.txt"
 $BuildBase = Join-Path $ScriptRoot "build"
 $BuildRoot = Join-Path $BuildBase $AppName
 $WorkPath = Join-Path $BuildRoot "work"
@@ -50,7 +52,7 @@ function Remove-ScopedDirectory {
 
 Write-Host ""
 Write-Host "============================================================"
-Write-Host "Building $AppName"
+Write-Host "Building $AppName v$AppVersion"
 Write-Host "PyInstaller: $PyInstallerVersion"
 Write-Host "Project root: $ScriptRoot"
 Write-Host "============================================================"
@@ -58,6 +60,9 @@ Write-Host ""
 
 if (!(Test-Path -LiteralPath $AppScript -PathType Leaf)) {
     throw "Application entrypoint not found: $AppScript"
+}
+if (!(Test-Path -LiteralPath $VersionFile -PathType Leaf)) {
+    throw "Windows version metadata file not found: $VersionFile"
 }
 
 $VenvPython = Join-Path $ScriptRoot ".venv\Scripts\python.exe"
@@ -92,6 +97,7 @@ New-Item -ItemType Directory -Path $SpecPath -Force | Out-Null
   --distpath "$DistRoot" `
   --workpath "$WorkPath" `
   --specpath "$SpecPath" `
+  --version-file "$VersionFile" `
   --name "$AppName" `
   "$AppScript"
 Assert-NativeCommandSucceeded -Step "PyInstaller EXE build" -ExitCode $LASTEXITCODE

@@ -6,8 +6,10 @@ REM Share the complete output folder, not only the EXE.
 
 set "SCRIPT_ROOT=%~dp0"
 set "APP_NAME=Universal ISO Builder"
+set "APP_VERSION=2.0"
 set "PYINSTALLER_VERSION=6.21.0"
 set "APP_SCRIPT=%SCRIPT_ROOT%universal_iso_builder_v1_4_1.py"
+set "VERSION_FILE=%SCRIPT_ROOT%windows_version_info.txt"
 set "BUILD_BASE=%SCRIPT_ROOT%build"
 set "BUILD_ROOT=%BUILD_BASE%\%APP_NAME%"
 set "WORK_PATH=%BUILD_ROOT%\work"
@@ -20,7 +22,7 @@ set "WARN_FILE=%WORK_PATH%\%APP_NAME%\warn-%APP_NAME%.txt"
 
 echo.
 echo ============================================================
-echo Building %APP_NAME%
+echo Building %APP_NAME% v%APP_VERSION%
 echo PyInstaller: %PYINSTALLER_VERSION%
 echo Project root: %SCRIPT_ROOT%
 echo ============================================================
@@ -28,6 +30,10 @@ echo.
 
 if not exist "%APP_SCRIPT%" (
     echo ERROR: Application entrypoint not found: %APP_SCRIPT%
+    goto :fail
+)
+if not exist "%VERSION_FILE%" (
+    echo ERROR: Windows version metadata file not found: %VERSION_FILE%
     goto :fail
 )
 
@@ -80,6 +86,7 @@ call "%PYTHON_EXE%" -m PyInstaller ^
   --distpath "%DIST_ROOT%" ^
   --workpath "%WORK_PATH%" ^
   --specpath "%SPEC_PATH%" ^
+  --version-file "%VERSION_FILE%" ^
   --name "%APP_NAME%" ^
   "%APP_SCRIPT%"
 
