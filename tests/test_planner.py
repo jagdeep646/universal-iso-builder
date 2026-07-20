@@ -19,6 +19,93 @@ except ModuleNotFoundError:
 
 
 class PlannerTests(unittest.TestCase):
+    def test_storage_preflight_failure_stops_before_command_creation(self) -> None:
+        with tempfile.TemporaryDirectory() as root_dir:
+            root = Path(root_dir)
+            source = root / "source"
+            output = root / "output"
+            source.mkdir()
+            output.mkdir()
+            (source / "payload.bin").write_bytes(b"abc")
+
+            backend = Backend(
+                name="powershell_imapi",
+                executable="powershell.exe",
+                priority=1,
+                description="test",
+                supports_udf=True,
+                supports_joliet=True,
+                supports_iso_level3=False,
+                source="test",
+            )
+            request = BuildRequest(
+                source_text=str(source),
+                output_text=str(output),
+                iso_name_text="Manual.iso",
+                label_text="MANUAL",
+                backend_choice="Auto",
+                options=BuildOptions(
+                    profile=PROFILE_AUTO,
+                    include_hidden=True,
+                    generate_hash=False,
+                    optimize_duplicates=False,
+                    auto_package=False,
+                    dry_run=False,
+                ),
+            )
+
+            with (
+                patch(
+                    "iso_builder.planner.validate_output_storage",
+                    side_effect=RuntimeError("Insufficient free space for ISO output."),
+                ),
+                patch("iso_builder.planner.build_command") as build_command,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "Insufficient free space"):
+                    prepare_build_plan(request, [backend])
+
+            build_command.assert_not_called()
+
+    def test_dry_run_skips_storage_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as root_dir:
+            root = Path(root_dir)
+            source = root / "source"
+            output = root / "output"
+            source.mkdir()
+            output.mkdir()
+            (source / "payload.bin").write_bytes(b"abc")
+
+            backend = Backend(
+                name="oscdimg",
+                executable="oscdimg.exe",
+                priority=1,
+                description="test",
+                supports_udf=True,
+                supports_joliet=True,
+                supports_iso_level3=True,
+                source="test",
+            )
+            request = BuildRequest(
+                source_text=str(source),
+                output_text=str(output),
+                iso_name_text="Manual.iso",
+                label_text="MANUAL",
+                backend_choice="Auto",
+                options=BuildOptions(
+                    profile=PROFILE_AUTO,
+                    include_hidden=True,
+                    generate_hash=False,
+                    optimize_duplicates=False,
+                    auto_package=False,
+                    dry_run=True,
+                ),
+            )
+
+            with patch("iso_builder.planner.validate_output_storage") as validate:
+                prepare_build_plan(request, [backend])
+
+            validate.assert_not_called()
+
     def test_prepare_warns_about_long_absolute_output_path(self) -> None:
         backend = Backend(
             name="oscdimg",
