@@ -16,6 +16,7 @@ htmlcov/
 # PyInstaller generated output
 build/
 dist/
+dist-onefile/
 *.spec
 
 # Generated ISO packages and hashes

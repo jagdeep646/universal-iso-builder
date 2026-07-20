@@ -14,7 +14,7 @@ if exist C:\Windows\Sysnative\WindowsPowerShell\v1.0\powershell.exe echo FOUND C
 if exist C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe echo FOUND C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe
 echo.
 echo IMAPI COM check:
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $x = New-Object -ComObject IMAPI2FS.MsftFileSystemImage; 'IMAPI OK' } catch { 'IMAPI ERROR: ' + $_.Exception.Message }"
+powershell -NoProfile -Command "try { $x = New-Object -ComObject IMAPI2FS.MsftFileSystemImage; 'IMAPI OK' } catch { 'IMAPI ERROR: ' + $_.Exception.Message }"
 echo.
 echo OSCDIMG check:
 where oscdimg 2>nul
