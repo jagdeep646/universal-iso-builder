@@ -17,6 +17,48 @@ except ModuleNotFoundError:
 
 
 class PlannerTests(unittest.TestCase):
+    def test_prepare_rejects_hidden_exclusion_for_unsupported_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as root_dir:
+            root = Path(root_dir)
+            source = root / "source"
+            output = root / "output"
+            source.mkdir()
+            output.mkdir()
+            (source / ".hidden.txt").write_text("hidden", encoding="utf-8")
+
+            backend = Backend(
+                name="powershell_imapi",
+                executable="powershell.exe",
+                priority=1,
+                description="test",
+                supports_udf=True,
+                supports_joliet=True,
+                supports_iso_level3=False,
+                source="test",
+            )
+            options = BuildOptions(
+                profile=PROFILE_AUTO,
+                include_hidden=False,
+                generate_hash=False,
+                optimize_duplicates=False,
+                auto_package=False,
+                dry_run=True,
+            )
+            request = BuildRequest(
+                source_text=str(source),
+                output_text=str(output),
+                iso_name_text="Manual.iso",
+                label_text="MANUAL",
+                backend_choice="Auto",
+                options=options,
+            )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "cannot reliably exclude hidden items",
+            ):
+                prepare_build_plan(request, [backend])
+
     def test_prepare_build_plan_manual_mode(self) -> None:
         with tempfile.TemporaryDirectory() as root_dir:
             root = Path(root_dir)
