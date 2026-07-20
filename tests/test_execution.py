@@ -84,7 +84,7 @@ class ExecutionTests(unittest.TestCase):
             plan = make_plan(output_iso, dry_run=False, generate_hash=True)
             logs = []
 
-            def fake_run_process(command, log) -> int:
+            def fake_run_process(command, log, cancellation=None) -> int:
                 temporary_output = Path(command[-1])
                 self.assertNotEqual(temporary_output, output_iso)
                 self.assertIn(".partial.iso", temporary_output.name)
@@ -111,7 +111,7 @@ class ExecutionTests(unittest.TestCase):
             plan = make_plan(output_iso, dry_run=False, generate_hash=False)
             logs = []
 
-            def fake_run_process(command, log) -> int:
+            def fake_run_process(command, log, cancellation=None) -> int:
                 Path(command[-1]).write_bytes(b"partial")
                 return 7
 
@@ -129,7 +129,7 @@ class ExecutionTests(unittest.TestCase):
             output_iso = Path(root_dir) / "race.iso"
             plan = make_plan(output_iso, dry_run=False, generate_hash=False)
 
-            def fake_run_process(command, log) -> int:
+            def fake_run_process(command, log, cancellation=None) -> int:
                 Path(command[-1]).write_bytes(b"new complete ISO")
                 output_iso.write_bytes(b"existing ISO")
                 return 0
