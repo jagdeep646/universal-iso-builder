@@ -6,6 +6,13 @@ from typing import Callable, List, Optional
 from .backends.imapi import cleanup_temp_script_from_command
 from .models import BuildExecutionResult, BuildPlan
 from .preflight import validate_output_storage
+from .transaction import (
+    cleanup_temporary_outputs,
+    make_temporary_output_path,
+    normalize_backend_output,
+    publish_temporary_output,
+    retarget_output_command,
+)
 from .utils import human_size, quote_cmd
 
 
@@ -50,6 +57,7 @@ def execute_build_plan(
     command = plan.command
     warnings = plan.warnings
     options = plan.options
+    temporary_output: Optional[Path] = None
 
     try:
         log("=" * 72)
@@ -85,24 +93,27 @@ def execute_build_plan(
             f"filesystem {storage.filesystem or 'NOT VERIFIED'}"
         )
         output_iso.parent.mkdir(parents=True, exist_ok=True)
-        return_code = run_process(command, log)
+        if output_iso.exists():
+            raise RuntimeError(f"Output ISO already exists: {output_iso}")
+
+        temporary_output = make_temporary_output_path(output_iso)
+        execution_command = retarget_output_command(
+            command,
+            output_iso,
+            temporary_output,
+        )
+        log("Transactional execution command:")
+        log(quote_cmd(execution_command))
+
+        return_code = run_process(execution_command, log)
         if return_code != 0:
             raise RuntimeError(f"ISO backend failed with exit code {return_code}")
 
-        if not output_iso.exists():
-            candidates = [
-                output_iso.with_suffix(output_iso.suffix + ".iso"),
-                output_iso.with_suffix(".cdr"),
-                Path(str(output_iso) + ".iso"),
-            ]
-            found = next((path for path in candidates if path.exists()), None)
-            if found:
-                log(f"Backend created file at {found}; renaming to {output_iso}")
-                found.rename(output_iso)
-
-        if not output_iso.exists() or output_iso.stat().st_size == 0:
+        normalize_backend_output(temporary_output)
+        if temporary_output.stat().st_size == 0:
             raise RuntimeError("ISO output file create nahi hua ya empty hai.")
 
+        publish_temporary_output(temporary_output, output_iso)
         log(f"ISO created: {output_iso}")
         log(f"ISO size: {human_size(output_iso.stat().st_size)}")
 
@@ -133,4 +144,7 @@ def execute_build_plan(
             error=str(error),
         )
     finally:
+        if temporary_output is not None:
+            for cleanup_error in cleanup_temporary_outputs(temporary_output):
+                log(f"WARNING: Temporary output cleanup failed: {cleanup_error}")
         cleanup_temp_script_from_command(command)
