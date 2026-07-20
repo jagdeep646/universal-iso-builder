@@ -21,6 +21,33 @@ def normalize_iso_name(name: str) -> str:
     return name
 
 
+def validate_manual_iso_name(name: str) -> str:
+    """Validate a user-entered ISO filename before it reaches filesystem APIs."""
+    raw_name = name or ""
+    if not raw_name.strip():
+        return normalize_iso_name(raw_name)
+
+    if raw_name != raw_name.strip() or raw_name.endswith("."):
+        raise ValueError("ISO filename space ya dot se start/end nahi ho sakta.")
+    if re.search(r"[<>:\"/\\|?*]", raw_name):
+        raise ValueError("ISO filename me Windows-invalid character hai.")
+    if re.search(r"[\x00-\x1f]", raw_name):
+        raise ValueError("ISO filename me control character allowed nahi hai.")
+
+    reserved = {
+        "CON", "PRN", "AUX", "NUL",
+        *(f"COM{i}" for i in range(1, 10)),
+        *(f"LPT{i}" for i in range(1, 10)),
+        "COM¹", "COM²", "COM³",
+        "LPT¹", "LPT²", "LPT³",
+    }
+    base_name = raw_name.split(".", 1)[0].upper()
+    if base_name in reserved:
+        raise ValueError(f"ISO filename Windows reserved device name use nahi kar sakta: {base_name}")
+
+    return normalize_iso_name(raw_name)
+
+
 def safe_path_component(name: str, fallback: str = "Software_Setup") -> str:
     """Create a safe Windows/macOS/Linux folder/file base name while keeping it readable."""
     name = (name or fallback).strip()
@@ -79,7 +106,7 @@ def resolve_build_paths(
         package_folder = output_folder / f"{safe_base}_ISO"
         output_iso = package_folder / iso_name
     else:
-        iso_name = normalize_iso_name(iso_name_text)
+        iso_name = validate_manual_iso_name(iso_name_text)
         label = clean_volume_label(label_text)
         output_iso = output_folder / iso_name
 

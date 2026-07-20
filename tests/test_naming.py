@@ -69,6 +69,65 @@ class NamingTests(unittest.TestCase):
                     False,
                 )
 
+    def test_resolve_manual_mode_rejects_invalid_windows_iso_names(self) -> None:
+        invalid_names = [
+            "CON",
+            "nul.iso",
+            "PRN.txt",
+            "AUX.iso",
+            "COM1.iso",
+            "LPT9.backup.iso",
+            "bad:name.iso",
+            "bad\x01name.iso",
+            "trailing.",
+            "trailing ",
+        ]
+
+        with tempfile.TemporaryDirectory() as root_dir:
+            root = Path(root_dir)
+            source = root / "source"
+            output = root / "output"
+            source.mkdir()
+            output.mkdir()
+
+            for iso_name in invalid_names:
+                with self.subTest(iso_name=repr(iso_name)):
+                    with self.assertRaisesRegex(ValueError, "ISO filename"):
+                        resolve_build_paths(
+                            str(source),
+                            str(output),
+                            iso_name,
+                            "MANUAL",
+                            False,
+                        )
+
+    def test_resolve_manual_mode_accepts_valid_similar_iso_names(self) -> None:
+        valid_names = [
+            ("COM10", "COM10.iso"),
+            ("CONSOLE", "CONSOLE.iso"),
+            ("setup.v2", "setup.v2.iso"),
+            ("सॉफ्टवेयर", "सॉफ्टवेयर.iso"),
+        ]
+
+        with tempfile.TemporaryDirectory() as root_dir:
+            root = Path(root_dir)
+            source = root / "source"
+            output = root / "output"
+            source.mkdir()
+            output.mkdir()
+
+            for entered_name, expected_name in valid_names:
+                with self.subTest(entered_name=entered_name):
+                    _, output_iso, _, iso_name = resolve_build_paths(
+                        str(source),
+                        str(output),
+                        entered_name,
+                        "MANUAL",
+                        False,
+                    )
+                    self.assertEqual(iso_name, expected_name)
+                    self.assertEqual(output_iso.name, expected_name)
+
     def test_resolve_build_paths_manual_mode(self) -> None:
         with tempfile.TemporaryDirectory() as root_dir:
             root = Path(root_dir)
