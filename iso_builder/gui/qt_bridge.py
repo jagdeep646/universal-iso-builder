@@ -10,11 +10,13 @@ from PySide6.QtCore import Property, QObject, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 
 from ..backends import detect_backends, select_backend
-from ..constants import APP_VERSION, PROFILE_AUTO
-from ..models import Backend, ScanResult
+from ..backends.imapi import cleanup_temp_script_from_command
+from ..constants import APP_VERSION, PROFILE_AUTO, PROFILES
+from ..models import Backend, BuildOptions, BuildPlan, BuildRequest, ScanResult
 from ..naming import auto_names_from_source
+from ..planner import prepare_build_plan
 from ..scanning import scan_source_folder
-from ..utils import human_size
+from ..utils import human_size, quote_cmd
 
 
 class QtIsoBridge(QObject):
@@ -25,19 +27,28 @@ class QtIsoBridge(QObject):
     themeChanged = Signal()
     sourceChanged = Signal()
     scanChanged = Signal()
+    settingsChanged = Signal()
+    planningChanged = Signal()
+    commandChanged = Signal()
+    availabilityChanged = Signal()
     _scanFinished = Signal(int, object, str)
+    _planFinished = Signal(int, object, str)
 
     def __init__(
         self,
         detector: Callable[[], Sequence[Backend]] = detect_backends,
         scanner: Callable[[Path, str, bool], ScanResult] = scan_source_folder,
         namer: Callable[[Path], tuple[str, str, str]] = auto_names_from_source,
+        planner: Callable[[BuildRequest, list[Backend]], BuildPlan] = prepare_build_plan,
+        command_cleanup: Callable[[Sequence[str]], None] = cleanup_temp_script_from_command,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._detector = detector
         self._scanner = scanner
         self._namer = namer
+        self._planner = planner
+        self._command_cleanup = command_cleanup
         self._backends: list[Backend] = []
         self._status_title = "Checking backends"
         self._status_detail = "Detecting available ISO tools..."
@@ -46,15 +57,30 @@ class QtIsoBridge(QObject):
         self._source_folder = ""
         self._source_name = "Not selected"
         self._source_detail = "Choose a source folder"
+        self._safe_base = "Software_Setup"
+        self._output_folder = ""
         self._volume_label = "SOFTWARE_SETUP"
         self._iso_name = "Software_Setup.iso"
+        self._selected_profile = PROFILE_AUTO
+        self._selected_backend = "Auto"
+        self._include_hidden = True
+        self._generate_hash = True
+        self._optimize_duplicates = False
+        self._auto_package = True
         self._is_scanning = False
         self._scan_files = 0
         self._scan_folders = 0
         self._scan_total_bytes = 0
         self._scan_warnings = 0
         self._scan_generation = 0
+        self._is_planning = False
+        self._planning_generation = 0
+        self._command_text = ""
+        self._command_warnings_text = ""
+        self._planning_error = ""
+        self._planned_output = ""
         self._scanFinished.connect(self._apply_scan_result)
+        self._planFinished.connect(self._apply_plan_result)
 
         application = QGuiApplication.instance()
         if isinstance(application, QGuiApplication):
@@ -132,6 +158,88 @@ class QtIsoBridge(QObject):
     def scanWarnings(self) -> int:
         return self._scan_warnings
 
+    @Property(str, notify=settingsChanged)
+    def outputFolder(self) -> str:
+        return self._output_folder
+
+    @Property(str, notify=settingsChanged)
+    def outputPreview(self) -> str:
+        if not self._output_folder:
+            return "Choose an output folder"
+        output_folder = Path(self._output_folder)
+        if self._auto_package:
+            return str(
+                output_folder
+                / f"{self._safe_base}_ISO"
+                / self._iso_name
+            )
+        return str(output_folder / self._iso_name)
+
+    @Property(list, constant=True)
+    def profileOptions(self) -> list[str]:
+        return list(PROFILES)
+
+    @Property(list, notify=backendsChanged)
+    def backendOptions(self) -> list[str]:
+        return ["Auto"] + [
+            f"{backend.name} | {backend.executable}"
+            for backend in self._backends
+        ]
+
+    @Property(str, notify=settingsChanged)
+    def selectedProfile(self) -> str:
+        return self._selected_profile
+
+    @Property(str, notify=settingsChanged)
+    def selectedBackend(self) -> str:
+        return self._selected_backend
+
+    @Property(bool, notify=settingsChanged)
+    def includeHidden(self) -> bool:
+        return self._include_hidden
+
+    @Property(bool, notify=settingsChanged)
+    def generateHash(self) -> bool:
+        return self._generate_hash
+
+    @Property(bool, notify=settingsChanged)
+    def optimizeDuplicates(self) -> bool:
+        return self._optimize_duplicates
+
+    @Property(bool, notify=settingsChanged)
+    def autoPackage(self) -> bool:
+        return self._auto_package
+
+    @Property(bool, notify=planningChanged)
+    def isPlanning(self) -> bool:
+        return self._is_planning
+
+    @Property(bool, notify=availabilityChanged)
+    def canShowCommand(self) -> bool:
+        return bool(
+            self._source_folder
+            and self._output_folder
+            and self._backends
+            and not self._is_scanning
+            and not self._is_planning
+        )
+
+    @Property(str, notify=commandChanged)
+    def commandText(self) -> str:
+        return self._command_text
+
+    @Property(str, notify=commandChanged)
+    def commandWarningsText(self) -> str:
+        return self._command_warnings_text
+
+    @Property(str, notify=commandChanged)
+    def planningError(self) -> str:
+        return self._planning_error
+
+    @Property(str, notify=commandChanged)
+    def plannedOutput(self) -> str:
+        return self._planned_output
+
     def _on_color_scheme_changed(self, color_scheme: Qt.ColorScheme) -> None:
         system_dark_mode = color_scheme == Qt.ColorScheme.Dark
         if self._system_dark_mode != system_dark_mode:
@@ -153,21 +261,28 @@ class QtIsoBridge(QObject):
             self._clear_scan_metrics()
             self.sourceChanged.emit()
             self.scanChanged.emit()
+            self.availabilityChanged.emit()
             return
 
         source = source.resolve()
-        _safe_base, iso_name, label = self._namer(source)
+        safe_base, iso_name, label = self._namer(source)
         self._scan_generation += 1
         generation = self._scan_generation
         self._source_folder = str(source)
         self._source_name = source.name or str(source)
         self._source_detail = "Scanning folder..."
+        self._safe_base = safe_base
+        if not self._output_folder:
+            self._output_folder = str(source.parent)
         self._volume_label = label
         self._iso_name = iso_name
         self._is_scanning = True
         self._clear_scan_metrics()
+        self._invalidate_command()
         self.sourceChanged.emit()
         self.scanChanged.emit()
+        self.settingsChanged.emit()
+        self.availabilityChanged.emit()
 
         worker = threading.Thread(
             target=self._scan_source_worker,
@@ -218,6 +333,195 @@ class QtIsoBridge(QObject):
 
         self.sourceChanged.emit()
         self.scanChanged.emit()
+        self.availabilityChanged.emit()
+
+    @Slot(QUrl)
+    @Slot(str)
+    def selectOutputFolder(self, folder: QUrl | str) -> None:
+        output_text = folder.toLocalFile() if isinstance(folder, QUrl) else folder
+        output = Path(output_text).expanduser()
+        if not output.exists() or not output.is_dir():
+            self._planning_error = "Selected output folder is not available."
+            self.commandChanged.emit()
+            return
+        self._output_folder = str(output.resolve())
+        self._invalidate_command()
+        self.settingsChanged.emit()
+        self.availabilityChanged.emit()
+
+    @Slot(str)
+    def setVolumeLabel(self, value: str) -> None:
+        self._volume_label = value
+        self._invalidate_command()
+        self.settingsChanged.emit()
+
+    @Slot(str)
+    def setIsoName(self, value: str) -> None:
+        self._iso_name = value
+        self._invalidate_command()
+        self.settingsChanged.emit()
+
+    @Slot(str)
+    def setProfile(self, value: str) -> None:
+        if value not in PROFILES:
+            return
+        self._selected_profile = value
+        self._update_preferred_backend()
+        self._invalidate_command()
+        self.settingsChanged.emit()
+        self.backendsChanged.emit()
+
+    @Slot(str)
+    def setBackend(self, value: str) -> None:
+        if value not in self.backendOptions:
+            return
+        self._selected_backend = value
+        self._update_preferred_backend()
+        self._invalidate_command()
+        self.settingsChanged.emit()
+        self.backendsChanged.emit()
+
+    @Slot(bool)
+    def setIncludeHidden(self, value: bool) -> None:
+        self._include_hidden = value
+        self._invalidate_command()
+        self.settingsChanged.emit()
+
+    @Slot(bool)
+    def setGenerateHash(self, value: bool) -> None:
+        self._generate_hash = value
+        self._invalidate_command()
+        self.settingsChanged.emit()
+
+    @Slot(bool)
+    def setOptimizeDuplicates(self, value: bool) -> None:
+        self._optimize_duplicates = value
+        self._invalidate_command()
+        self.settingsChanged.emit()
+
+    @Slot(bool)
+    def setAutoPackage(self, value: bool) -> None:
+        self._auto_package = value
+        self._invalidate_command()
+        self.settingsChanged.emit()
+
+    def _invalidate_command(self) -> None:
+        self._command_text = ""
+        self._command_warnings_text = ""
+        self._planning_error = ""
+        self._planned_output = ""
+        self.commandChanged.emit()
+
+    def _update_preferred_backend(self) -> None:
+        if not self._backends:
+            self._preferred_backend = "Not available"
+            return
+        if self._selected_backend == "Auto":
+            preferred = select_backend(self._backends, self._selected_profile)
+            self._preferred_backend = preferred.name if preferred else "Not available"
+            return
+        self._preferred_backend = self._selected_backend.split(" | ", 1)[0].strip()
+
+    def _snapshot_build_request(self) -> BuildRequest:
+        return BuildRequest(
+            source_text=self._source_folder,
+            output_text=self._output_folder,
+            iso_name_text=self._iso_name,
+            label_text=self._volume_label,
+            backend_choice=self._selected_backend,
+            options=BuildOptions(
+                profile=self._selected_profile,
+                include_hidden=self._include_hidden,
+                generate_hash=self._generate_hash,
+                optimize_duplicates=self._optimize_duplicates,
+                auto_package=self._auto_package,
+                dry_run=True,
+            ),
+        )
+
+    @Slot()
+    def showCommand(self) -> None:
+        if not self.canShowCommand:
+            self._planning_error = (
+                "Select valid source/output folders, wait for scanning, "
+                "and ensure an ISO backend is available."
+            )
+            self.commandChanged.emit()
+            return
+
+        request = self._snapshot_build_request()
+        backends = list(self._backends)
+        self._planning_generation += 1
+        generation = self._planning_generation
+        self._is_planning = True
+        self._planning_error = ""
+        self._command_text = ""
+        self._command_warnings_text = ""
+        self._planned_output = ""
+        self.planningChanged.emit()
+        self.commandChanged.emit()
+        self.availabilityChanged.emit()
+
+        worker = threading.Thread(
+            target=self._plan_worker,
+            args=(generation, request, backends),
+            name=f"qt-command-plan-{generation}",
+            daemon=True,
+        )
+        worker.start()
+
+    def _plan_worker(
+        self,
+        generation: int,
+        request: BuildRequest,
+        backends: list[Backend],
+    ) -> None:
+        plan = None
+        try:
+            plan = self._planner(request, backends)
+            self._planFinished.emit(generation, plan, "")
+        except Exception as exc:
+            self._planFinished.emit(generation, None, str(exc))
+        finally:
+            if isinstance(plan, BuildPlan):
+                try:
+                    self._command_cleanup(plan.command)
+                except Exception:
+                    pass
+
+    @Slot(int, object, str)
+    def _apply_plan_result(
+        self,
+        generation: int,
+        result: object,
+        error: str,
+    ) -> None:
+        if generation != self._planning_generation:
+            return
+        self._is_planning = False
+        if error:
+            self._planning_error = error
+            self._command_text = ""
+            self._command_warnings_text = ""
+            self._planned_output = ""
+        elif isinstance(result, BuildPlan):
+            self._planning_error = ""
+            self._command_text = quote_cmd(result.command)
+            self._command_warnings_text = "\n".join(result.warnings)
+            self._planned_output = str(result.output_iso)
+            if result.options.auto_package:
+                self._iso_name = result.output_iso.name
+                self._volume_label = result.label
+                self.settingsChanged.emit()
+        else:
+            self._planning_error = "Command preparation returned an invalid plan."
+            self._command_text = ""
+            self._command_warnings_text = ""
+            self._planned_output = ""
+
+        self.planningChanged.emit()
+        self.commandChanged.emit()
+        self.availabilityChanged.emit()
 
     @Slot()
     def refreshBackends(self) -> None:
@@ -231,7 +535,21 @@ class QtIsoBridge(QObject):
             self._status_detail = str(exc)
         else:
             self._backends = backends
-            preferred = select_backend(backends, PROFILE_AUTO)
+            if self._selected_backend not in self.backendOptions:
+                self._selected_backend = "Auto"
+            self._update_preferred_backend()
+            preferred = (
+                next(
+                    (
+                        backend
+                        for backend in backends
+                        if backend.name == self._preferred_backend
+                    ),
+                    None,
+                )
+                if self._preferred_backend != "Not available"
+                else None
+            )
             if preferred is None:
                 self._preferred_backend = "Not available"
                 self._status_title = "Backend required"
@@ -246,3 +564,5 @@ class QtIsoBridge(QObject):
 
         self.backendsChanged.emit()
         self.statusChanged.emit()
+        self.settingsChanged.emit()
+        self.availabilityChanged.emit()

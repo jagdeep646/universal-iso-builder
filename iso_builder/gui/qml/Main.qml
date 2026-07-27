@@ -47,6 +47,378 @@ ApplicationWindow {
         onAccepted: bridge.selectSourceFolder(selectedFolder)
     }
 
+    FolderDialog {
+        id: outputFolderDialog
+        title: "Select ISO output folder"
+        onAccepted: bridge.selectOutputFolder(selectedFolder)
+    }
+
+    Connections {
+        target: bridge
+
+        function onCommandChanged() {
+            if (!bridge.isPlanning
+                    && (bridge.commandText.length > 0
+                        || bridge.planningError.length > 0)) {
+                commandDialog.open()
+            }
+        }
+    }
+
+    Dialog {
+        id: buildSettingsDialog
+        width: Math.min(690, window.width - 80)
+        height: Math.min(650, window.height - 70)
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+
+        background: Rectangle {
+            radius: 24
+            color: window.darkMode ? "#20263c" : "#f8f8fd"
+            border.width: 1
+            border.color: window.darkMode ? "#505a74" : "#ffffff"
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 24
+            spacing: 13
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    Text {
+                        text: "Build Settings"
+                        color: window.ink
+                        font.pixelSize: 22
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: "Configure the verified ISO planning snapshot."
+                        color: window.muted
+                        font.pixelSize: 12
+                    }
+                }
+
+                Button {
+                    text: "×"
+                    width: 36
+                    height: 36
+                    onClicked: buildSettingsDialog.close()
+                    contentItem: Text {
+                        text: parent.text
+                        color: window.ink
+                        font.pixelSize: 20
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 10
+                        color: parent.hovered
+                               ? (window.darkMode ? "#343c55" : "#ebeaf2")
+                               : "transparent"
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: window.darkMode ? "#3b4258" : "#e2e2eb"
+            }
+
+            Text {
+                text: "Output Folder"
+                color: window.muted
+                font.pixelSize: 12
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 42
+                    radius: 12
+                    color: window.darkMode ? "#292f46" : "#ffffff"
+                    border.width: 1
+                    border.color: window.darkMode ? "#4b536b" : "#dcdeea"
+                    Text {
+                        anchors.fill: parent
+                        anchors.leftMargin: 13
+                        anchors.rightMargin: 13
+                        text: bridge.outputFolder.length > 0
+                              ? bridge.outputFolder
+                              : "Choose output folder"
+                        color: window.muted
+                        font.pixelSize: 12
+                        elide: Text.ElideMiddle
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+
+                Button {
+                    id: outputBrowseButton
+                    Layout.preferredWidth: 92
+                    Layout.preferredHeight: 42
+                    text: "Browse"
+                    onClicked: outputFolderDialog.open()
+                    contentItem: Text {
+                        text: outputBrowseButton.text
+                        color: "white"
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 12
+                        color: outputBrowseButton.hovered ? "#765ff0" : "#6553d9"
+                    }
+                }
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: 12
+                rowSpacing: 8
+
+                Text {
+                    text: "ISO File Name"
+                    color: window.muted
+                    font.pixelSize: 12
+                }
+                Text {
+                    text: "Volume Label"
+                    color: window.muted
+                    font.pixelSize: 12
+                }
+
+                TextField {
+                    id: isoNameField
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 42
+                    text: bridge.isoName
+                    enabled: !bridge.autoPackage
+                    selectByMouse: true
+                    onEditingFinished: bridge.setIsoName(text)
+                    color: window.ink
+                    placeholderTextColor: window.muted
+                    background: Rectangle {
+                        radius: 12
+                        color: window.darkMode ? "#292f46" : "#ffffff"
+                        border.width: 1
+                        border.color: window.darkMode ? "#4b536b" : "#dcdeea"
+                        opacity: isoNameField.enabled ? 1.0 : 0.65
+                    }
+                }
+
+                TextField {
+                    id: volumeLabelField
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 42
+                    text: bridge.volumeLabel
+                    enabled: !bridge.autoPackage
+                    selectByMouse: true
+                    onEditingFinished: bridge.setVolumeLabel(text)
+                    color: window.ink
+                    background: Rectangle {
+                        radius: 12
+                        color: window.darkMode ? "#292f46" : "#ffffff"
+                        border.width: 1
+                        border.color: window.darkMode ? "#4b536b" : "#dcdeea"
+                        opacity: volumeLabelField.enabled ? 1.0 : 0.65
+                    }
+                }
+
+                Text {
+                    text: "Build Profile"
+                    color: window.muted
+                    font.pixelSize: 12
+                }
+                Text {
+                    text: "Backend"
+                    color: window.muted
+                    font.pixelSize: 12
+                }
+
+                ComboBox {
+                    id: profileCombo
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 42
+                    model: bridge.profileOptions
+                    currentIndex: Math.max(0, bridge.profileOptions.indexOf(
+                                               bridge.selectedProfile))
+                    onActivated: bridge.setProfile(currentText)
+                }
+
+                ComboBox {
+                    id: backendCombo
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 42
+                    model: bridge.backendOptions
+                    currentIndex: Math.max(0, bridge.backendOptions.indexOf(
+                                               bridge.selectedBackend))
+                    onActivated: bridge.setBackend(currentText)
+                }
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 2
+                columnSpacing: 22
+                rowSpacing: 5
+
+                CheckBox {
+                    text: "Auto package folder"
+                    checked: bridge.autoPackage
+                    onToggled: bridge.setAutoPackage(checked)
+                }
+                CheckBox {
+                    text: "Include hidden files"
+                    checked: bridge.includeHidden
+                    onToggled: bridge.setIncludeHidden(checked)
+                }
+                CheckBox {
+                    text: "Generate SHA256"
+                    checked: bridge.generateHash
+                    onToggled: bridge.setGenerateHash(checked)
+                }
+                CheckBox {
+                    text: "Optimize duplicates"
+                    checked: bridge.optimizeDuplicates
+                    onToggled: bridge.setOptimizeDuplicates(checked)
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: bridge.planningError.length > 0
+                text: bridge.planningError
+                color: "#ef5965"
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+
+            Item { Layout.fillHeight: true }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+
+                Button {
+                    Layout.preferredWidth: 110
+                    Layout.preferredHeight: 46
+                    text: "Close"
+                    onClicked: buildSettingsDialog.close()
+                }
+
+                GradientButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 46
+                    text: bridge.isPlanning ? "Preparing command..." : "Show Command"
+                    enabled: bridge.canShowCommand
+                    onClicked: bridge.showCommand()
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: commandDialog
+        width: Math.min(760, window.width - 70)
+        height: Math.min(540, window.height - 70)
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+
+        background: Rectangle {
+            radius: 24
+            color: window.darkMode ? "#20263c" : "#f8f8fd"
+            border.width: 1
+            border.color: window.darkMode ? "#505a74" : "#ffffff"
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 24
+            spacing: 12
+
+            Text {
+                text: bridge.planningError.length > 0
+                      ? "Command Preparation Failed"
+                      : "Prepared Command"
+                color: window.ink
+                font.pixelSize: 22
+                font.weight: Font.DemiBold
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: bridge.plannedOutput.length > 0
+                text: "Output: " + bridge.plannedOutput
+                color: window.muted
+                font.pixelSize: 12
+                elide: Text.ElideMiddle
+            }
+
+            TextArea {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: bridge.commandText.length > 0
+                text: bridge.commandText
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.WrapAnywhere
+                color: window.ink
+                background: Rectangle {
+                    radius: 14
+                    color: window.darkMode ? "#161b2e" : "#ffffff"
+                    border.width: 1
+                    border.color: window.darkMode ? "#454e68" : "#dcdeea"
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: bridge.commandWarningsText.length > 0
+                text: "Warnings:\n" + bridge.commandWarningsText
+                color: window.orange
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: bridge.planningError.length > 0
+                text: bridge.planningError
+                color: "#ef5965"
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+            }
+
+            GradientButton {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 46
+                text: "Close"
+                onClicked: commandDialog.close()
+            }
+        }
+    }
+
     Rectangle {
         id: shell
         anchors.fill: parent
@@ -162,8 +534,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: "Settings"
                         iconSource: Qt.resolvedUrl("assets/icons/settings.svg")
-                        enabled: false
-                        opacity: 0.78
+                        onClicked: buildSettingsDialog.open()
                     }
 
                     NavButton {
@@ -667,7 +1038,7 @@ ApplicationWindow {
                                                 anchors.left: parent.left
                                                 anchors.leftMargin: 14
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                text: "Auto — Best Compatible"
+                                                text: bridge.selectedProfile
                                                 color: window.muted
                                                 font.pixelSize: 12
                                             }
@@ -680,8 +1051,11 @@ ApplicationWindow {
                                 GradientButton {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 44
-                                    text: "Build workflow connects in Q4"
-                                    enabled: false
+                                    text: bridge.isPlanning
+                                          ? "Preparing command..."
+                                          : "Show Command"
+                                    enabled: bridge.canShowCommand
+                                    onClicked: bridge.showCommand()
                                 }
                             }
                         }
@@ -901,7 +1275,7 @@ ApplicationWindow {
                                     Text {
                                         Layout.fillWidth: true
                                         text: bridge.sourceFolder.length > 0
-                                              ? bridge.isoName + " (planned)"
+                                              ? bridge.outputPreview
                                               : "No ISO output yet"
                                         color: window.muted
                                         font.pixelSize: 11
