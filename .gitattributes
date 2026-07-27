@@ -3,6 +3,8 @@
 
 # Source code and repository text use LF.
 *.py text eol=lf
+*.qml text eol=lf
+*.svg text eol=lf
 *.txt text eol=lf
 *.md text eol=lf
 .gitignore text eol=lf

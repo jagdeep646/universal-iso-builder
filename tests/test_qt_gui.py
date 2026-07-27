@@ -80,9 +80,128 @@ class QtGuiContractTests(unittest.TestCase):
 
         self.assertIn("ApplicationWindow", qml)
         self.assertIn("bridge.refreshBackends()", qml)
+        self.assertIn("Qt.FramelessWindowHint", qml)
+        self.assertIn("DragHandler", qml)
+        self.assertIn("height: 150", qml)
+        self.assertIn("Build workflow connects in Q4", qml)
         self.assertNotIn("Bootable ISO", qml)
-        self.assertNotIn("Verify ISO", qml)
+        self.assertNotIn("ISO Verified", qml)
         self.assertNotIn("72%", qml)
+
+    def test_premium_qml_components_exist(self) -> None:
+        components = ROOT / "iso_builder" / "gui" / "qml" / "components"
+        expected = {
+            "ClayBadge.qml",
+            "DiscArt.qml",
+            "GlassCard.qml",
+            "GradientButton.qml",
+            "NavButton.qml",
+            "PremiumProgressBar.qml",
+            "StatusCard.qml",
+            "WindowResizeHandle.qml",
+        }
+
+        self.assertEqual(
+            {path.name for path in components.glob("*.qml")},
+            expected,
+        )
+
+    def test_qml_theme_uses_system_signal_without_fake_build_progress(self) -> None:
+        qml = (
+            ROOT / "iso_builder" / "gui" / "qml" / "Main.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("bridge.systemDarkMode", qml)
+        self.assertIn('text: "Idle"', qml)
+        self.assertIn("PremiumProgressBar", qml)
+        self.assertIn("value: 0.0", qml)
+        self.assertIn('text: "0%"', qml)
+
+    def test_frameless_window_has_all_native_resize_edges(self) -> None:
+        qml = (
+            ROOT / "iso_builder" / "gui" / "qml" / "Main.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(qml.count("WindowResizeHandle {"), 8)
+        self.assertIn("edges: Qt.LeftEdge", qml)
+        self.assertIn("edges: Qt.RightEdge", qml)
+        self.assertIn("edges: Qt.TopEdge", qml)
+        self.assertIn("edges: Qt.BottomEdge", qml)
+        self.assertIn("Qt.LeftEdge | Qt.TopEdge", qml)
+        self.assertIn("Qt.RightEdge | Qt.BottomEdge", qml)
+
+    def test_vector_status_assets_exist_and_are_used(self) -> None:
+        icon_directory = (
+            ROOT / "iso_builder" / "gui" / "qml" / "assets" / "icons"
+        )
+        expected = {
+            "check.svg",
+            "create.svg",
+            "disc.svg",
+            "folder.svg",
+            "globe.svg",
+            "help.svg",
+            "history.svg",
+            "home.svg",
+            "settings.svg",
+            "shield.svg",
+            "tools.svg",
+            "verify.svg",
+        }
+        qml = (
+            ROOT / "iso_builder" / "gui" / "qml" / "Main.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(
+            {path.name for path in icon_directory.glob("*.svg")},
+            expected,
+        )
+        for icon_name in expected:
+            self.assertIn(f"assets/icons/{icon_name}", qml)
+
+    def test_complete_reference_sidebar_and_segoe_ui_font_contract(self) -> None:
+        qml = (
+            ROOT / "iso_builder" / "gui" / "qml" / "Main.qml"
+        ).read_text(encoding="utf-8")
+        launcher = (
+            ROOT / "iso_builder" / "gui" / "qt_app.py"
+        ).read_text(encoding="utf-8")
+
+        for label in (
+            "Home",
+            "Create ISO",
+            "Verify ISO",
+            "History",
+            "Settings",
+            "Tools",
+            "Help",
+        ):
+            self.assertIn(f'text: "{label}"', qml)
+        self.assertIn('QFont("Segoe UI")', launcher)
+        self.assertIn("app.setFont(application_font)", launcher)
+
+    def test_dark_status_cards_and_disabled_preview_controls_keep_contrast(self) -> None:
+        qml = (
+            ROOT / "iso_builder" / "gui" / "qml" / "Main.qml"
+        ).read_text(encoding="utf-8")
+        status_card = (
+            ROOT / "iso_builder" / "gui" / "qml" / "components" / "StatusCard.qml"
+        ).read_text(encoding="utf-8")
+        gradient_button = (
+            ROOT
+            / "iso_builder"
+            / "gui"
+            / "qml"
+            / "components"
+            / "GradientButton.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertGreaterEqual(qml.count("valueColor: window.ink"), 4)
+        self.assertGreaterEqual(qml.count("captionColor: window.muted"), 4)
+        self.assertIn("color: root.valueColor", status_card)
+        self.assertIn("color: root.captionColor", status_card)
+        self.assertIn("control.enabled ? 1.0 : 0.9", gradient_button)
+        self.assertIn("opacity: 0.86", qml)
 
     def test_existing_production_entrypoint_remains_tkinter(self) -> None:
         launcher = (ROOT / "universal_iso_builder_v1_4_1.py").read_text(

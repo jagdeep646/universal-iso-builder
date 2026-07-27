@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 from PySide6.QtCore import QTimer, QUrl
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
@@ -35,6 +35,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
     app = QGuiApplication([sys.argv[0]])
     app.setApplicationName("Universal ISO Builder")
     app.setOrganizationName("Universal ISO Builder")
+    application_font = QFont("Segoe UI")
+    application_font.setPixelSize(14)
+    application_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+    app.setFont(application_font)
 
     engine = QQmlApplicationEngine()
     bridge = QtIsoBridge(parent=engine)
