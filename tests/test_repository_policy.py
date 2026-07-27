@@ -9,6 +9,8 @@ class RepositoryPolicyTests(unittest.TestCase):
 
         self.assertIn("* text=auto", attributes)
         self.assertIn("*.py text eol=lf", attributes)
+        self.assertIn("*.qml text eol=lf", attributes)
+        self.assertIn("*.svg text eol=lf", attributes)
         self.assertIn("*.txt text eol=lf", attributes)
         self.assertIn("*.bat text eol=crlf", attributes)
         self.assertIn("*.cmd text eol=crlf", attributes)

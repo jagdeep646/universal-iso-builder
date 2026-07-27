@@ -88,8 +88,16 @@ class IsoBuilderApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title(f"{APP_NAME} v{APP_VERSION}")
-        self.geometry("1180x820")
         self.minsize(1040, 720)
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        window_width = min(1280, max(1040, screen_width - 80))
+        window_height = min(860, max(720, screen_height - 120))
+        window_x = max(0, (screen_width - window_width) // 2)
+        window_y = max(0, (screen_height - window_height) // 2)
+        self.geometry(
+            f"{window_width}x{window_height}+{window_x}+{window_y}"
+        )
 
         self.ui_queue: "queue.Queue[UIEvent]" = queue.Queue()
         self.worker: Optional[threading.Thread] = None
@@ -110,267 +118,831 @@ class IsoBuilderApp(tk.Tk):
         self.hash_var = tk.BooleanVar(value=True)
         self.optimize_var = tk.BooleanVar(value=False)
         self.auto_package_var = tk.BooleanVar(value=True)
-        self.auto_package_text_var = tk.StringVar(value="Auto name + package folder: ON")
+        self.auto_package_text_var = tk.StringVar(value="Auto package: ON")
         self.dry_run_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Ready")
         self.summary_var = tk.StringVar(value="Select a source folder to begin")
+        self.source_card_var = tk.StringVar(value="No folder selected")
+        self.source_detail_var = tk.StringVar(value="Choose a source folder")
+        self.backend_card_var = tk.StringVar(value="Detecting...")
+        self.backend_detail_var = tk.StringVar(value="Checking available tools")
+        self.profile_card_var = tk.StringVar(value=PROFILE_AUTO)
+        self.integrity_card_var = tk.StringVar(value="SHA-256 enabled")
+        self.output_card_var = tk.StringVar(value="Output path will appear here")
 
         self._configure_styles()
         self._build_ui()
+        self.profile_var.trace_add("write", self._refresh_dashboard_cards)
+        self.backend_var.trace_add("write", self._refresh_dashboard_cards)
+        self.hash_var.trace_add("write", self._refresh_dashboard_cards)
         self.refresh_backends()
         self.after(150, self._process_ui_queue)
 
     def _configure_styles(self) -> None:
         self.colors = {
-            "bg": "#0f172a",
-            "surface": "#111827",
-            "surface_2": "#162033",
-            "card": "#182233",
-            "card_2": "#1f2937",
-            "border": "#2b3648",
-            "text": "#e5e7eb",
-            "muted": "#94a3b8",
-            "accent": "#22c55e",
-            "accent_2": "#38bdf8",
-            "warning": "#f59e0b",
-            "danger": "#ef4444",
+            "app_bg": "#111936",
+            "sidebar": "#252d5b",
+            "sidebar_2": "#30396d",
+            "sidebar_text": "#f7f7ff",
+            "sidebar_muted": "#bdc4df",
+            "content": "#eef0f8",
+            "surface": "#f7f8fc",
+            "surface_2": "#f0f2fa",
+            "card": "#fafbfe",
+            "card_hover": "#f4f5fb",
+            "border": "#d8dceb",
+            "shadow": "#d5d8e6",
+            "field": "#f4f5fa",
+            "text": "#202952",
+            "muted": "#68718f",
+            "primary": "#6757e8",
+            "primary_hover": "#5544d8",
+            "primary_pressed": "#4938bd",
+            "blue": "#4e88f7",
+            "success": "#2fa66f",
+            "warning": "#e78525",
+            "danger": "#d84b65",
+            "focus": "#7567ef",
+            "log_bg": "#f7f8fc",
+            "log_text": "#303858",
         }
 
-        self.configure(bg=self.colors["bg"])
+        self.configure(bg=self.colors["app_bg"])
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
         except Exception:
             pass
 
-        style.configure("App.TFrame", background=self.colors["bg"])
-        style.configure("Surface.TFrame", background=self.colors["surface"])
-        style.configure("Card.TFrame", background=self.colors["card"], relief="flat")
-        style.configure("Inner.TFrame", background=self.colors["card_2"], relief="flat")
-        style.configure("Header.TFrame", background=self.colors["surface"])
-        style.configure("Status.TFrame", background=self.colors["surface_2"])
+        style.configure("Content.TFrame", background=self.colors["content"])
+        style.configure("Card.TFrame", background=self.colors["card"])
+        style.configure("Card.TLabel", background=self.colors["card"], foreground=self.colors["text"], font=("Segoe UI", 10))
+        style.configure("CardMuted.TLabel", background=self.colors["card"], foreground=self.colors["muted"], font=("Segoe UI", 9))
+        style.configure("CardTitle.TLabel", background=self.colors["card"], foreground=self.colors["text"], font=("Segoe UI", 12, "bold"))
+        style.configure("StatusTitle.TLabel", background=self.colors["card"], foreground=self.colors["text"], font=("Segoe UI", 10, "bold"))
+        style.configure("StatusHint.TLabel", background=self.colors["card"], foreground=self.colors["muted"], font=("Segoe UI", 9))
 
-        style.configure("Title.TLabel", background=self.colors["surface"], foreground=self.colors["text"], font=("Segoe UI", 24, "bold"))
-        style.configure("Subtitle.TLabel", background=self.colors["surface"], foreground=self.colors["muted"], font=("Segoe UI", 10))
-        style.configure("SectionTitle.TLabel", background=self.colors["card"], foreground=self.colors["text"], font=("Segoe UI", 12, "bold"))
-        style.configure("Body.TLabel", background=self.colors["card"], foreground=self.colors["text"], font=("Segoe UI", 10))
-        style.configure("Muted.TLabel", background=self.colors["card"], foreground=self.colors["muted"], font=("Segoe UI", 9))
-        style.configure("Badge.TLabel", background=self.colors["surface_2"], foreground=self.colors["accent_2"], font=("Segoe UI", 9, "bold"), padding=(10, 4))
-        style.configure("PillGood.TLabel", background="#0b2a1b", foreground="#86efac", font=("Segoe UI", 9, "bold"), padding=(10, 4))
-        style.configure("PillInfo.TLabel", background="#082f49", foreground="#7dd3fc", font=("Segoe UI", 9, "bold"), padding=(10, 4))
-        style.configure("PillWarn.TLabel", background="#3a2405", foreground="#fcd34d", font=("Segoe UI", 9, "bold"), padding=(10, 4))
-
-        style.configure("Section.TLabelframe", background=self.colors["card"], borderwidth=1, relief="solid", bordercolor=self.colors["border"])
-        style.configure("Section.TLabelframe.Label", background=self.colors["card"], foreground=self.colors["text"], font=("Segoe UI", 11, "bold"))
-
-        style.configure("App.TLabel", background=self.colors["card"], foreground=self.colors["text"], font=("Segoe UI", 10))
-        style.configure("StatusLabel.TLabel", background=self.colors["surface_2"], foreground=self.colors["text"], font=("Segoe UI", 10, "bold"))
-        style.configure("StatusHint.TLabel", background=self.colors["surface_2"], foreground=self.colors["muted"], font=("Segoe UI", 9))
-
-        style.configure("App.TButton", font=("Segoe UI", 10), padding=(14, 10), background=self.colors["card_2"], foreground=self.colors["text"], borderwidth=0)
-        style.map("App.TButton", background=[("active", "#273447")])
-        style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), padding=(16, 11), background="#16a34a", foreground="white", borderwidth=0)
-        style.map("Primary.TButton", background=[("active", "#15803d")])
-
-        style.configure("App.TCheckbutton", background=self.colors["card"], foreground=self.colors["text"], font=("Segoe UI", 9))
-        style.map("App.TCheckbutton", background=[("active", self.colors["card"])], foreground=[("disabled", self.colors["muted"])])
-
-        style.configure("App.TEntry", fieldbackground="#0b1220", background="#0b1220", foreground=self.colors["text"], insertcolor=self.colors["text"], bordercolor=self.colors["border"], lightcolor=self.colors["border"], darkcolor=self.colors["border"], padding=8)
+        style.configure(
+            "Secondary.TButton",
+            font=("Segoe UI", 9, "bold"),
+            padding=(12, 9),
+            background=self.colors["surface_2"],
+            foreground=self.colors["text"],
+            borderwidth=1,
+            bordercolor=self.colors["border"],
+            lightcolor=self.colors["border"],
+            darkcolor=self.colors["border"],
+        )
         style.map(
-            "App.TEntry",
-            fieldbackground=[("!disabled", "#0b1220")],
+            "Secondary.TButton",
+            background=[
+                ("pressed", self.colors["shadow"]),
+                ("active", self.colors["card_hover"]),
+            ],
+            bordercolor=[("focus", self.colors["focus"])],
+        )
+        style.configure(
+            "Browse.TButton",
+            font=("Segoe UI", 9, "bold"),
+            padding=(15, 9),
+            background=self.colors["primary"],
+            foreground="white",
+            borderwidth=0,
+        )
+        style.map(
+            "Browse.TButton",
+            background=[
+                ("pressed", self.colors["primary_pressed"]),
+                ("active", self.colors["primary_hover"]),
+            ],
+        )
+        style.configure(
+            "Primary.TButton",
+            font=("Segoe UI", 11, "bold"),
+            padding=(18, 12),
+            background=self.colors["primary"],
+            foreground="white",
+            borderwidth=0,
+        )
+        style.map(
+            "Primary.TButton",
+            background=[
+                ("pressed", self.colors["primary_pressed"]),
+                ("active", self.colors["blue"]),
+            ],
+        )
+        style.configure(
+            "Sidebar.TButton",
+            font=("Segoe UI", 10),
+            padding=(16, 11),
+            anchor="w",
+            background=self.colors["sidebar"],
+            foreground=self.colors["sidebar_text"],
+            borderwidth=0,
+        )
+        style.map(
+            "Sidebar.TButton",
+            background=[
+                ("pressed", self.colors["primary_pressed"]),
+                ("active", self.colors["sidebar_2"]),
+            ],
+            foreground=[("disabled", self.colors["sidebar_muted"])],
+        )
+        style.configure(
+            "SidebarActive.TButton",
+            font=("Segoe UI", 10, "bold"),
+            padding=(16, 11),
+            anchor="w",
+            background=self.colors["primary"],
+            foreground="white",
+            borderwidth=0,
+        )
+        style.map(
+            "SidebarActive.TButton",
+            background=[
+                ("pressed", self.colors["primary_pressed"]),
+                ("active", self.colors["primary_hover"]),
+            ],
+        )
+
+        style.configure(
+            "Soft.TCheckbutton",
+            background=self.colors["card"],
+            foreground=self.colors["text"],
+            font=("Segoe UI", 9),
+            indicatorcolor=self.colors["field"],
+            indicatorrelief="flat",
+            padding=(2, 4),
+        )
+        style.map(
+            "Soft.TCheckbutton",
+            background=[("active", self.colors["card"])],
+            indicatorcolor=[
+                ("selected", self.colors["primary"]),
+                ("!selected", self.colors["field"]),
+            ],
+            foreground=[("disabled", self.colors["muted"])],
+        )
+
+        style.configure(
+            "Field.TEntry",
+            fieldbackground=self.colors["field"],
+            background=self.colors["field"],
+            foreground=self.colors["text"],
+            insertcolor=self.colors["text"],
+            bordercolor=self.colors["border"],
+            lightcolor=self.colors["border"],
+            darkcolor=self.colors["border"],
+            padding=7,
+        )
+        style.map(
+            "Field.TEntry",
+            fieldbackground=[("!disabled", self.colors["field"])],
             foreground=[("!disabled", self.colors["text"])],
+            bordercolor=[("focus", self.colors["focus"])],
+            lightcolor=[("focus", self.colors["focus"])],
+            darkcolor=[("focus", self.colors["focus"])],
         )
 
-        style.configure("App.TCombobox", fieldbackground="#0b1220", background="#0b1220", foreground=self.colors["text"], arrowcolor=self.colors["text"], bordercolor=self.colors["border"], lightcolor=self.colors["border"], darkcolor=self.colors["border"], padding=6)
+        style.configure(
+            "Field.TCombobox",
+            fieldbackground=self.colors["field"],
+            background=self.colors["field"],
+            foreground=self.colors["text"],
+            arrowcolor=self.colors["primary"],
+            bordercolor=self.colors["border"],
+            lightcolor=self.colors["border"],
+            darkcolor=self.colors["border"],
+            padding=6,
+        )
         style.map(
-            "App.TCombobox",
-            fieldbackground=[("readonly", "#0b1220"), ("!disabled", "#0b1220")],
+            "Field.TCombobox",
+            fieldbackground=[
+                ("readonly", self.colors["field"]),
+                ("!disabled", self.colors["field"]),
+            ],
             foreground=[("readonly", self.colors["text"]), ("!disabled", self.colors["text"])],
-            selectbackground=[("readonly", "#0b1220")],
+            selectbackground=[("readonly", self.colors["field"])],
             selectforeground=[("readonly", self.colors["text"])],
-            background=[("readonly", "#0b1220"), ("active", "#0b1220")],
-            arrowcolor=[("readonly", self.colors["text"]), ("active", self.colors["text"])],
+            background=[
+                ("readonly", self.colors["field"]),
+                ("active", self.colors["surface_2"]),
+            ],
+            arrowcolor=[
+                ("readonly", self.colors["primary"]),
+                ("active", self.colors["primary_hover"]),
+            ],
+            bordercolor=[("focus", self.colors["focus"])],
         )
 
-        style.configure("Vertical.TScrollbar", background=self.colors["card_2"], troughcolor="#0b1220", bordercolor=self.colors["border"], arrowcolor=self.colors["text"])
+        style.configure(
+            "Glass.Vertical.TScrollbar",
+            background=self.colors["shadow"],
+            troughcolor=self.colors["surface_2"],
+            bordercolor=self.colors["surface_2"],
+            arrowcolor=self.colors["muted"],
+        )
+        style.configure(
+            "Glass.Horizontal.TProgressbar",
+            background=self.colors["primary"],
+            troughcolor=self.colors["surface_2"],
+            bordercolor=self.colors["border"],
+            lightcolor=self.colors["primary"],
+            darkcolor=self.colors["blue"],
+        )
 
-        self.option_add("*TCombobox*Listbox.background", "#0b1220")
+        self.option_add("*TCombobox*Listbox.background", self.colors["surface"])
         self.option_add("*TCombobox*Listbox.foreground", self.colors["text"])
-        self.option_add("*TCombobox*Listbox.selectBackground", "#1d4ed8")
+        self.option_add("*TCombobox*Listbox.selectBackground", self.colors["primary"])
         self.option_add("*TCombobox*Listbox.selectForeground", "white")
 
     def _build_ui(self) -> None:
-        outer = ttk.Frame(self, style="App.TFrame", padding=18)
-        outer.pack(fill="both", expand=True)
-        outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(3, weight=1)
+        shell = tk.Frame(self, bg=self.colors["app_bg"], bd=0)
+        shell.pack(fill="both", expand=True, padx=12, pady=12)
 
-        header = ttk.Frame(outer, style="Header.TFrame", padding=18)
-        header.grid(row=0, column=0, sticky="ew")
-        header.columnconfigure(1, weight=1)
+        sidebar = tk.Frame(
+            shell,
+            width=205,
+            bg=self.colors["sidebar"],
+            highlightthickness=1,
+            highlightbackground="#525b8b",
+            bd=0,
+        )
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
 
-        logo_wrap = tk.Frame(header, bg=self.colors["surface"], highlightthickness=0)
-        logo_wrap.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 14))
-        logo = tk.Canvas(logo_wrap, width=68, height=68, bg=self.colors["surface"], highlightthickness=0, bd=0)
-        logo.pack()
-        self._draw_logo(logo)
+        content = tk.Frame(
+            shell,
+            bg=self.colors["content"],
+            highlightthickness=1,
+            highlightbackground="#ffffff",
+            bd=0,
+        )
+        content.pack(side="left", fill="both", expand=True)
+        content.columnconfigure(0, weight=1)
+        content.rowconfigure(2, weight=1)
 
-        ttk.Label(header, text=APP_NAME, style="Title.TLabel").grid(row=0, column=1, sticky="w")
-        ttk.Label(
+        self._build_sidebar(sidebar)
+
+        header = tk.Frame(content, bg=self.colors["content"], bd=0)
+        header.grid(row=0, column=0, sticky="ew", padx=28, pady=(20, 10))
+        header.columnconfigure(0, weight=1)
+
+        title_area = tk.Frame(header, bg=self.colors["content"], bd=0)
+        title_area.grid(row=0, column=0, sticky="nw", pady=(5, 0))
+        tk.Label(
+            title_area,
+            text="Welcome back!",
+            bg=self.colors["content"],
+            fg=self.colors["muted"],
+            font=("Segoe UI", 10),
+        ).pack(anchor="w")
+        tk.Label(
+            title_area,
+            text="Universal ISO Builder",
+            bg=self.colors["content"],
+            fg=self.colors["text"],
+            font=("Segoe UI", 25, "bold"),
+        ).pack(anchor="w", pady=(3, 3))
+        tk.Label(
+            title_area,
+            text="Create safe, non-bootable data ISOs with automatic backend detection.",
+            bg=self.colors["content"],
+            fg=self.colors["muted"],
+            font=("Segoe UI", 10),
+        ).pack(anchor="w")
+
+        hero = tk.Canvas(
             header,
-            text="Modern folder-to-ISO builder with backend auto-detect, compatibility fallback, and clean package output.",
-            style="Subtitle.TLabel",
-        ).grid(row=1, column=1, sticky="w", pady=(2, 0))
+            width=250,
+            height=105,
+            bg=self.colors["content"],
+            highlightthickness=0,
+            bd=0,
+        )
+        hero.grid(row=0, column=1, sticky="e")
+        self._draw_hero_disc(hero)
 
-        badge_bar = ttk.Frame(header, style="Header.TFrame")
-        badge_bar.grid(row=0, column=2, rowspan=2, sticky="e")
-        ttk.Label(badge_bar, text="SAFE PACKAGING", style="PillGood.TLabel").pack(side="left", padx=(0, 8))
-        ttk.Label(badge_bar, text="AUTO BACKEND", style="PillInfo.TLabel").pack(side="left", padx=(0, 8))
-        ttk.Label(badge_bar, text="SHA256 READY", style="PillWarn.TLabel").pack(side="left")
+        metrics = tk.Frame(content, bg=self.colors["content"], bd=0)
+        metrics.grid(row=1, column=0, sticky="ew", padx=28, pady=(4, 12))
+        for column in range(4):
+            metrics.columnconfigure(column, weight=1, uniform="metric")
 
-        summary = ttk.Frame(outer, style="Status.TFrame", padding=(14, 10))
-        summary.grid(row=1, column=0, sticky="ew", pady=(14, 14))
-        summary.columnconfigure(0, weight=1)
-        ttk.Label(summary, textvariable=self.status_var, style="StatusLabel.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(summary, textvariable=self.summary_var, style="StatusHint.TLabel").grid(row=1, column=0, sticky="w", pady=(2, 0))
+        self._create_metric_card(
+            metrics,
+            0,
+            "SRC",
+            "Source Folder",
+            self.source_card_var,
+            self.source_detail_var,
+            self.colors["blue"],
+        )
+        self._create_metric_card(
+            metrics,
+            1,
+            "OK",
+            "Backend",
+            self.backend_card_var,
+            self.backend_detail_var,
+            self.colors["success"],
+        )
+        self._create_metric_card(
+            metrics,
+            2,
+            "UDF",
+            "Compatibility",
+            self.profile_card_var,
+            None,
+            self.colors["primary"],
+        )
+        self._create_metric_card(
+            metrics,
+            3,
+            "SHA",
+            "Integrity",
+            self.integrity_card_var,
+            None,
+            self.colors["warning"],
+        )
 
-        body = ttk.Frame(outer, style="App.TFrame")
-        body.grid(row=2, column=0, sticky="nsew")
-        body.columnconfigure(0, weight=3)
-        body.columnconfigure(1, weight=2)
-        body.rowconfigure(0, weight=1)
+        workspace = tk.Frame(content, bg=self.colors["content"], bd=0)
+        workspace.grid(row=2, column=0, sticky="nsew", padx=28, pady=(0, 12))
+        workspace.columnconfigure(0, weight=3)
+        workspace.columnconfigure(1, weight=2)
+        workspace.rowconfigure(0, weight=1)
 
-        left = ttk.Frame(body, style="App.TFrame")
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
-        left.columnconfigure(0, weight=1)
+        build_card = self._make_card(workspace, padx=18, pady=8)
+        build_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        build_card.columnconfigure(0, weight=1)
+        build_card.rowconfigure(1, weight=1)
 
-        right = ttk.Frame(body, style="App.TFrame")
-        right.grid(row=0, column=1, sticky="nsew")
-        right.columnconfigure(0, weight=1)
-
-        # Input / Output card
-        form = ttk.LabelFrame(left, text="Input / Output", style="Section.TLabelframe", padding=14)
-        form.grid(row=0, column=0, sticky="ew")
+        ttk.Label(build_card, text="Create New ISO", style="CardTitle.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 6)
+        )
+        form = tk.Frame(build_card, bg=self.colors["card"], bd=0)
+        form.grid(row=1, column=0, sticky="nsew")
+        form.columnconfigure(0, weight=1)
         form.columnconfigure(1, weight=1)
-        self._add_labeled_row(form, 0, "Source folder", self.source_var, self.pick_source, "Browse")
-        self._add_labeled_row(form, 1, "Output folder", self.output_var, self.pick_output, "Browse")
-        self._add_labeled_row(form, 2, "ISO file name", self.iso_name_var)
-        self._add_labeled_row(form, 3, "Volume label", self.label_var)
 
-        # Settings card
-        settings = ttk.LabelFrame(left, text="ISO Settings", style="Section.TLabelframe", padding=14)
-        settings.grid(row=1, column=0, sticky="ew", pady=(12, 0))
-        settings.columnconfigure(1, weight=1)
-        settings.columnconfigure(3, weight=1)
+        source_group = self._create_field_group(
+            form,
+            "Source Folder",
+            self.source_var,
+            command=self.pick_source,
+            button_text="Browse",
+        )
+        source_group.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        self.source_entry = source_group.field
 
-        ttk.Label(settings, text="Compatibility profile", style="App.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 8), pady=6)
-        ttk.Combobox(settings, textvariable=self.profile_var, values=PROFILES, state="readonly", style="App.TCombobox").grid(row=0, column=1, sticky="ew", pady=6)
-        ttk.Label(settings, text="Backend", style="App.TLabel").grid(row=0, column=2, sticky="w", padx=(16, 8), pady=6)
-        self.backend_combo = ttk.Combobox(settings, textvariable=self.backend_var, values=["Auto"], state="readonly", style="App.TCombobox")
-        self.backend_combo.grid(row=0, column=3, sticky="ew", pady=6)
+        output_group = self._create_field_group(
+            form,
+            "Output Folder",
+            self.output_var,
+            command=self.pick_output,
+            button_text="Browse",
+        )
+        output_group.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 8))
 
-        checks_frame = ttk.Frame(settings, style="Card.TFrame")
-        checks_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(10, 0))
-        checks_frame.columnconfigure(0, weight=1)
-        checks_frame.columnconfigure(1, weight=1)
+        name_group = self._create_field_group(form, "ISO File Name", self.iso_name_var)
+        name_group.grid(row=2, column=0, sticky="ew", padx=(0, 7), pady=(0, 8))
+        label_group = self._create_field_group(form, "Volume Label", self.label_var)
+        label_group.grid(row=2, column=1, sticky="ew", padx=(7, 0), pady=(0, 8))
 
-        left_checks = ttk.Frame(checks_frame, style="Card.TFrame")
-        left_checks.grid(row=0, column=0, sticky="w")
-        right_checks = ttk.Frame(checks_frame, style="Card.TFrame")
-        right_checks.grid(row=0, column=1, sticky="w")
+        profile_group = self._create_combo_group(
+            form,
+            "Compatibility Profile",
+            self.profile_var,
+            PROFILES,
+        )
+        profile_group.grid(row=3, column=0, sticky="ew", padx=(0, 7), pady=(0, 8))
+        backend_group = self._create_combo_group(
+            form,
+            "Backend",
+            self.backend_var,
+            ["Auto"],
+        )
+        backend_group.grid(row=3, column=1, sticky="ew", padx=(7, 0), pady=(0, 8))
+        self.backend_combo = backend_group.field
 
-        ttk.Checkbutton(left_checks, text="Include hidden files", variable=self.include_hidden_var, style="App.TCheckbutton").pack(anchor="w", pady=2)
-        ttk.Checkbutton(left_checks, text="Generate SHA256 hash", variable=self.hash_var, style="App.TCheckbutton").pack(anchor="w", pady=2)
+        checks = tk.Frame(
+            form,
+            bg=self.colors["surface_2"],
+            highlightthickness=1,
+            highlightbackground=self.colors["border"],
+            padx=10,
+            pady=7,
+        )
+        checks.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(2, 9))
+        checks.columnconfigure(0, weight=1)
+        checks.columnconfigure(1, weight=1)
+        checks.columnconfigure(2, weight=1)
         ttk.Checkbutton(
-            right_checks,
+            checks,
+            text="Include hidden",
+            variable=self.include_hidden_var,
+            style="Soft.TCheckbutton",
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(
+            checks,
+            text="Generate SHA256",
+            variable=self.hash_var,
+            style="Soft.TCheckbutton",
+        ).grid(row=0, column=1, sticky="w")
+        ttk.Checkbutton(
+            checks,
             textvariable=self.auto_package_text_var,
             variable=self.auto_package_var,
             command=self._on_auto_package_changed,
-            style="App.TCheckbutton",
-        ).pack(anchor="w", pady=2)
-        ttk.Checkbutton(right_checks, text="Optimize duplicate files (when supported)", variable=self.optimize_var, style="App.TCheckbutton").pack(anchor="w", pady=2)
-        ttk.Checkbutton(right_checks, text="Dry run only", variable=self.dry_run_var, style="App.TCheckbutton").pack(anchor="w", pady=2)
+            style="Soft.TCheckbutton",
+        ).grid(row=0, column=2, sticky="w")
+        ttk.Checkbutton(
+            checks,
+            text="Optimize duplicates",
+            variable=self.optimize_var,
+            style="Soft.TCheckbutton",
+        ).grid(row=1, column=0, sticky="w")
+        ttk.Checkbutton(
+            checks,
+            text="Dry run only",
+            variable=self.dry_run_var,
+            style="Soft.TCheckbutton",
+        ).grid(row=1, column=1, sticky="w")
 
-        # Quick action card
-        actions = ttk.LabelFrame(right, text="Quick Actions", style="Section.TLabelframe", padding=14)
-        actions.grid(row=0, column=0, sticky="ew")
-        actions.columnconfigure((0,1), weight=1)
-        ttk.Button(actions, text="Refresh Backends", style="App.TButton", command=self.refresh_backends).grid(row=0, column=0, sticky="ew", padx=(0, 8), pady=6)
-        ttk.Button(actions, text="Scan Folder", style="App.TButton", command=self.scan_only).grid(row=0, column=1, sticky="ew", pady=6)
-        ttk.Button(actions, text="Show Command", style="App.TButton", command=self.show_command).grid(row=1, column=0, sticky="ew", padx=(0, 8), pady=6)
-        ttk.Button(actions, text="Clear Logs", style="App.TButton", command=self.clear_logs).grid(row=1, column=1, sticky="ew", pady=6)
-        ttk.Button(actions, text="Build ISO", style="Primary.TButton", command=self.start_build).grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        ttk.Button(
+            form,
+            text="Create ISO",
+            style="Primary.TButton",
+            command=self.start_build,
+        ).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(10, 0))
 
-        info = ttk.LabelFrame(right, text="Best Practice", style="Section.TLabelframe", padding=14)
-        info.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
-        info.columnconfigure(0, weight=1)
-        ttk.Label(info, text="• Source folder ko original state me rakha jata hai.", style="Body.TLabel").grid(row=0, column=0, sticky="w", pady=2)
-        ttk.Label(info, text="• Auto mode source folder ke name se ISO aur label banata hai.", style="Body.TLabel").grid(row=1, column=0, sticky="w", pady=2)
-        ttk.Label(info, text="• Package folder me ISO + SHA256 hash dono save hote hain.", style="Body.TLabel").grid(row=2, column=0, sticky="w", pady=2)
-        ttk.Label(info, text="• Windows par oscdimg best backend hai; PowerShell IMAPI fallback available hai.", style="Body.TLabel").grid(row=3, column=0, sticky="w", pady=2)
-        ttk.Label(info, text="• Ye app non-bootable data ISO banata hai.", style="Body.TLabel").grid(row=4, column=0, sticky="w", pady=2)
-
-        tips = ttk.Frame(right, style="Card.TFrame", padding=(2, 12, 2, 0))
-        tips.grid(row=2, column=0, sticky="ew")
-        ttk.Label(tips, text="UI refreshed with a modern layout and custom in-app branding.", style="Muted.TLabel").pack(anchor="w")
-
-        log_frame = ttk.LabelFrame(outer, text="Logs", style="Section.TLabelframe", padding=12)
-        log_frame.grid(row=3, column=0, sticky="nsew", pady=(14, 0))
-        log_frame.rowconfigure(0, weight=1)
-        log_frame.columnconfigure(0, weight=1)
+        activity_card = self._make_card(workspace, padx=16, pady=16)
+        activity_card.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        activity_card.columnconfigure(0, weight=1)
+        activity_card.rowconfigure(1, weight=1)
+        ttk.Label(activity_card, text="Recent Activity", style="CardTitle.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 10)
+        )
 
         self.log_text = tk.Text(
-            log_frame,
+            activity_card,
             wrap="word",
-            height=18,
-            font=("Cascadia Mono", 10),
-            bg="#0b1220",
-            fg="#dbeafe",
-            insertbackground="#dbeafe",
-            selectbackground="#1d4ed8",
+            width=44,
+            height=16,
+            font=("Cascadia Mono", 9),
+            bg=self.colors["log_bg"],
+            fg=self.colors["log_text"],
+            insertbackground=self.colors["text"],
+            selectbackground=self.colors["primary"],
             selectforeground="white",
             relief="flat",
+            highlightthickness=1,
+            highlightbackground=self.colors["border"],
+            highlightcolor=self.colors["focus"],
             bd=0,
-            padx=12,
-            pady=12,
+            padx=11,
+            pady=10,
         )
-        self.log_text.grid(row=0, column=0, sticky="nsew")
-        scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
-        scroll.grid(row=0, column=1, sticky="ns")
+        self.log_text.grid(row=1, column=0, sticky="nsew")
+        scroll = ttk.Scrollbar(
+            activity_card,
+            orient="vertical",
+            command=self.log_text.yview,
+            style="Glass.Vertical.TScrollbar",
+        )
+        scroll.grid(row=1, column=1, sticky="ns")
         self.log_text.configure(yscrollcommand=scroll.set)
 
-        footer = ttk.Frame(outer, style="App.TFrame", padding=(2, 10, 2, 0))
-        footer.grid(row=4, column=0, sticky="ew")
-        ttk.Label(
-            footer,
-            text="Note: This app creates non-bootable data ISOs. It does not bypass antivirus or run installers.",
-            style="Muted.TLabel",
+        progress_card = self._make_card(content, padx=18, pady=13)
+        progress_card.grid(row=3, column=0, sticky="ew", padx=28, pady=(0, 16))
+        progress_card.columnconfigure(0, weight=3)
+        progress_card.columnconfigure(1, weight=2)
+
+        status_area = tk.Frame(progress_card, bg=self.colors["card"], bd=0)
+        status_area.grid(row=0, column=0, sticky="ew", padx=(0, 18))
+        status_area.columnconfigure(0, weight=1)
+        ttk.Label(status_area, textvariable=self.status_var, style="StatusTitle.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Label(status_area, textvariable=self.summary_var, style="StatusHint.TLabel").grid(
+            row=1, column=0, sticky="w", pady=(2, 7)
+        )
+        self.activity_progress = ttk.Progressbar(
+            status_area,
+            orient="horizontal",
+            mode="determinate",
+            value=0,
+            style="Glass.Horizontal.TProgressbar",
+        )
+        self.activity_progress.grid(row=2, column=0, sticky="ew")
+
+        output_area = tk.Frame(
+            progress_card,
+            bg=self.colors["surface_2"],
+            highlightthickness=1,
+            highlightbackground=self.colors["border"],
+            padx=12,
+            pady=8,
+        )
+        output_area.grid(row=0, column=1, sticky="nsew")
+        tk.Label(
+            output_area,
+            text="Output",
+            bg=self.colors["surface_2"],
+            fg=self.colors["text"],
+            font=("Segoe UI", 9, "bold"),
         ).pack(anchor="w")
+        tk.Label(
+            output_area,
+            textvariable=self.output_card_var,
+            bg=self.colors["surface_2"],
+            fg=self.colors["muted"],
+            font=("Segoe UI", 8),
+            anchor="w",
+            justify="left",
+            wraplength=340,
+        ).pack(anchor="w", pady=(3, 0))
+        tk.Label(
+            progress_card,
+            text="Non-bootable data ISO • Source remains unchanged • No installer is executed",
+            bg=self.colors["card"],
+            fg=self.colors["muted"],
+            font=("Segoe UI", 8),
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
     def _draw_logo(self, canvas: tk.Canvas) -> None:
-        canvas.create_oval(6, 6, 62, 62, fill="#0b1220", outline="#2b3648", width=2)
-        canvas.create_arc(12, 12, 56, 56, start=30, extent=280, style="arc", outline="#38bdf8", width=5)
-        canvas.create_oval(22, 22, 46, 46, fill="#16a34a", outline="")
-        canvas.create_rectangle(32, 15, 36, 53, fill="#e5e7eb", outline="")
-        canvas.create_rectangle(20, 31, 48, 35, fill="#e5e7eb", outline="")
-        canvas.create_text(34, 58, text="ISO", fill="#94a3b8", font=("Segoe UI", 8, "bold"))
+        canvas.create_oval(9, 9, 91, 91, fill="#eef0ff", outline="#a8b1e9", width=2)
+        canvas.create_arc(13, 13, 87, 87, start=20, extent=95, style="arc", outline="#8a6ff0", width=9)
+        canvas.create_arc(13, 13, 87, 87, start=120, extent=95, style="arc", outline="#6eb6ff", width=9)
+        canvas.create_arc(13, 13, 87, 87, start=220, extent=115, style="arc", outline="#e39adf", width=9)
+        canvas.create_oval(38, 38, 62, 62, fill="#d9ddf5", outline="#ffffff", width=3)
+        canvas.create_oval(45, 45, 55, 55, fill=self.colors["sidebar"], outline="")
 
-    def _add_labeled_row(self, parent: ttk.LabelFrame, row: int, label: str, var: tk.StringVar, command: Optional[Callable[[], None]] = None, button_text: str = "") -> None:
-        ttk.Label(parent, text=label, style="App.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=6)
-        ttk.Entry(parent, textvariable=var, style="App.TEntry").grid(row=row, column=1, sticky="ew", pady=6)
+    def _draw_hero_disc(self, canvas: tk.Canvas) -> None:
+        canvas.create_oval(72, 71, 232, 105, fill="#d9d4d0", outline="")
+        canvas.create_rectangle(72, 79, 232, 94, fill="#e9e3df", outline="")
+        canvas.create_oval(68, 66, 236, 96, fill="#f2ece8", outline="#ffffff", width=2)
+        canvas.create_oval(86, 4, 220, 92, fill="#f1efff", outline="#ffffff", width=2)
+        canvas.create_arc(90, 8, 216, 88, start=5, extent=80, style="arc", outline="#90baff", width=8)
+        canvas.create_arc(90, 8, 216, 88, start=90, extent=95, style="arc", outline="#d6a6ed", width=8)
+        canvas.create_arc(90, 8, 216, 88, start=190, extent=90, style="arc", outline="#ffcfb0", width=8)
+        canvas.create_arc(90, 8, 216, 88, start=285, extent=70, style="arc", outline="#a69df6", width=8)
+        canvas.create_oval(137, 34, 169, 62, fill="#ffffff", outline="#d7d4ed", width=3)
+        canvas.create_oval(147, 42, 159, 54, fill="#d8daeb", outline="")
+
+    def _build_sidebar(self, sidebar: tk.Frame) -> None:
+        brand = tk.Frame(sidebar, bg=self.colors["sidebar"], bd=0)
+        brand.pack(fill="x", padx=18, pady=(22, 15))
+        logo = tk.Canvas(
+            brand,
+            width=100,
+            height=100,
+            bg=self.colors["sidebar"],
+            highlightthickness=0,
+            bd=0,
+        )
+        logo.pack()
+        self._draw_logo(logo)
+        tk.Label(
+            brand,
+            text="ISO BUILDER",
+            bg=self.colors["sidebar"],
+            fg=self.colors["sidebar_text"],
+            font=("Segoe UI", 14, "bold"),
+        ).pack(pady=(4, 0))
+        tk.Label(
+            brand,
+            text=f"v{APP_VERSION}",
+            bg=self.colors["sidebar"],
+            fg=self.colors["sidebar_muted"],
+            font=("Segoe UI", 9),
+        ).pack(pady=(2, 0))
+
+        navigation = tk.Frame(sidebar, bg=self.colors["sidebar"], bd=0)
+        navigation.pack(fill="x", padx=14, pady=(4, 0))
+        ttk.Button(
+            navigation,
+            text="  Dashboard",
+            style="SidebarActive.TButton",
+            command=lambda: self.source_entry.focus_set(),
+        ).pack(fill="x", pady=3)
+        ttk.Button(
+            navigation,
+            text="  Create ISO",
+            style="Sidebar.TButton",
+            command=lambda: self.source_entry.focus_set(),
+        ).pack(fill="x", pady=3)
+        ttk.Button(
+            navigation,
+            text="  Scan Folder",
+            style="Sidebar.TButton",
+            command=self.scan_only,
+        ).pack(fill="x", pady=3)
+        ttk.Button(
+            navigation,
+            text="  Show Command",
+            style="Sidebar.TButton",
+            command=self.show_command,
+        ).pack(fill="x", pady=3)
+        ttk.Button(
+            navigation,
+            text="  Refresh Backends",
+            style="Sidebar.TButton",
+            command=self.refresh_backends,
+        ).pack(fill="x", pady=3)
+        ttk.Button(
+            navigation,
+            text="  Activity Log",
+            style="Sidebar.TButton",
+            command=lambda: self.log_text.focus_set(),
+        ).pack(fill="x", pady=3)
+        ttk.Button(
+            navigation,
+            text="  Clear Logs",
+            style="Sidebar.TButton",
+            command=self.clear_logs,
+        ).pack(fill="x", pady=3)
+
+        safety = tk.Frame(
+            sidebar,
+            bg=self.colors["sidebar_2"],
+            highlightthickness=1,
+            highlightbackground="#596394",
+            padx=13,
+            pady=12,
+        )
+        safety.pack(side="bottom", fill="x", padx=16, pady=18)
+        tk.Label(
+            safety,
+            text="●  System Status",
+            bg=self.colors["sidebar_2"],
+            fg="#83e6ad",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            safety,
+            textvariable=self.status_var,
+            bg=self.colors["sidebar_2"],
+            fg=self.colors["sidebar_text"],
+            font=("Segoe UI", 9),
+            wraplength=160,
+            justify="left",
+        ).pack(anchor="w", pady=(5, 0))
+
+    def _make_card(self, parent: tk.Misc, *, padx: int, pady: int) -> tk.Frame:
+        return tk.Frame(
+            parent,
+            bg=self.colors["card"],
+            highlightthickness=1,
+            highlightbackground=self.colors["border"],
+            bd=0,
+            padx=padx,
+            pady=pady,
+        )
+
+    def _create_metric_card(
+        self,
+        parent: tk.Frame,
+        column: int,
+        icon_text: str,
+        heading: str,
+        value_var: tk.StringVar,
+        detail_var: Optional[tk.StringVar],
+        accent: str,
+    ) -> None:
+        card = self._make_card(parent, padx=12, pady=12)
+        card.grid(
+            row=0,
+            column=column,
+            sticky="nsew",
+            padx=(0 if column == 0 else 5, 0 if column == 3 else 5),
+        )
+        card.columnconfigure(1, weight=1)
+        icon = tk.Canvas(
+            card,
+            width=48,
+            height=48,
+            bg=self.colors["card"],
+            highlightthickness=0,
+            bd=0,
+        )
+        icon.grid(row=0, column=0, rowspan=3, sticky="w", padx=(0, 10))
+        icon.create_oval(4, 4, 44, 44, fill=self.colors["surface_2"], outline=accent, width=2)
+        icon.create_text(24, 24, text=icon_text, fill=accent, font=("Segoe UI", 8, "bold"))
+        ttk.Label(card, text=heading, style="CardMuted.TLabel").grid(
+            row=0, column=1, sticky="w"
+        )
+        ttk.Label(
+            card,
+            textvariable=value_var,
+            style="Card.TLabel",
+            font=("Segoe UI", 9, "bold"),
+            wraplength=155,
+        ).grid(row=1, column=1, sticky="w", pady=(2, 0))
+        if detail_var is not None:
+            tk.Label(
+                card,
+                textvariable=detail_var,
+                bg=self.colors["card"],
+                fg=accent,
+                font=("Segoe UI", 8),
+                wraplength=155,
+                justify="left",
+            ).grid(row=2, column=1, sticky="w", pady=(2, 0))
+
+    def _create_field_group(
+        self,
+        parent: tk.Frame,
+        label: str,
+        var: tk.StringVar,
+        command: Optional[Callable[[], None]] = None,
+        button_text: str = "",
+    ) -> tk.Frame:
+        group = tk.Frame(parent, bg=self.colors["card"], bd=0)
+        group.columnconfigure(0, weight=1)
+        tk.Label(
+            group,
+            text=label,
+            bg=self.colors["card"],
+            fg=self.colors["muted"],
+            font=("Segoe UI", 9),
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
+        field = ttk.Entry(group, textvariable=var, style="Field.TEntry")
+        field.grid(row=1, column=0, sticky="ew")
+        group.field = field
         if command:
-            ttk.Button(parent, text=button_text or "Browse", style="App.TButton", command=command).grid(row=row, column=2, padx=(8, 0), pady=6)
+            ttk.Button(
+                group,
+                text=button_text or "Browse",
+                style="Browse.TButton",
+                command=command,
+            ).grid(row=1, column=1, padx=(7, 0))
+        return group
+
+    def _create_combo_group(
+        self,
+        parent: tk.Frame,
+        label: str,
+        var: tk.StringVar,
+        values: List[str],
+    ) -> tk.Frame:
+        group = tk.Frame(parent, bg=self.colors["card"], bd=0)
+        group.columnconfigure(0, weight=1)
+        tk.Label(
+            group,
+            text=label,
+            bg=self.colors["card"],
+            fg=self.colors["muted"],
+            font=("Segoe UI", 9),
+        ).grid(row=0, column=0, sticky="w", pady=(0, 2))
+        field = ttk.Combobox(
+            group,
+            textvariable=var,
+            values=values,
+            state="readonly",
+            style="Field.TCombobox",
+        )
+        field.grid(row=1, column=0, sticky="ew")
+        group.field = field
+        return group
 
     def _set_status(self, title: str, hint: str = "") -> None:
         self.status_var.set(title)
         if hint:
             self.summary_var.set(hint)
 
+    def _refresh_dashboard_cards(self, *_: object) -> None:
+        profile_card_var = getattr(self, "profile_card_var", None)
+        if profile_card_var is not None:
+            profile_card_var.set(self.profile_var.get())
+
+        integrity_card_var = getattr(self, "integrity_card_var", None)
+        if integrity_card_var is not None:
+            state = "enabled" if bool(self.hash_var.get()) else "disabled"
+            integrity_card_var.set(f"SHA-256 {state}")
+
+        backend_card_var = getattr(self, "backend_card_var", None)
+        if backend_card_var is not None:
+            selected = self.backend_var.get().split(" | ", 1)[0].strip()
+            backend_card_var.set(selected or "Auto")
+
+    def _set_activity_busy(self, busy: bool) -> None:
+        progress = getattr(self, "activity_progress", None)
+        if progress is None:
+            return
+        try:
+            if busy:
+                progress.configure(mode="indeterminate")
+                progress.start(12)
+            else:
+                progress.stop()
+                progress.configure(mode="determinate", value=0)
+        except tk.TclError:
+            pass
+
     def _on_auto_package_changed(self) -> None:
         enabled = bool(self.auto_package_var.get())
         state = "ON" if enabled else "OFF"
-        self.auto_package_text_var.set(f"Auto name + package folder: {state}")
+        self.auto_package_text_var.set(f"Auto package: {state}")
         self.log(f"Auto package changed: {state}")
         if enabled:
             self._set_status(
@@ -396,6 +968,8 @@ class IsoBuilderApp(tk.Tk):
                 self.label_var.set(label)
                 self.log(f"Auto naming set from source: {safe_base}")
                 self.log(f"Package folder will be: {safe_base}_ISO")
+            self.source_card_var.set(source.name or str(source))
+            self.source_detail_var.set("Ready to scan")
             self._set_status("Source selected", f"Ready to package: {source.name}")
             self.log(f"Source selected: {folder}")
 
@@ -403,6 +977,7 @@ class IsoBuilderApp(tk.Tk):
         folder = filedialog.askdirectory(title="Select output folder")
         if folder:
             self.output_var.set(folder)
+            self.output_card_var.set(folder)
             self._set_status("Output folder selected", folder)
             self.log(f"Output selected: {folder}")
 
@@ -432,11 +1007,13 @@ class IsoBuilderApp(tk.Tk):
         if self._operation_is_active():
             return False
         self.active_operation = operation
+        IsoBuilderApp._set_activity_busy(self, True)
         return True
 
     def _finish_operation(self, operation: str) -> None:
         if self.active_operation == operation:
             self.active_operation = None
+            IsoBuilderApp._set_activity_busy(self, False)
             if operation == "build":
                 self.build_cancellation = None
 
@@ -511,6 +1088,11 @@ class IsoBuilderApp(tk.Tk):
         self.after(150, self._process_ui_queue)
 
     def _handle_scan_complete(self, scan: ScanResult) -> None:
+        source_detail_var = getattr(self, "source_detail_var", None)
+        if source_detail_var is not None:
+            source_detail_var.set(
+                f"{scan.files} files • {human_size(scan.total_bytes)}"
+            )
         self._set_status("Scan complete", f"{scan.files} files | {human_size(scan.total_bytes)} total size")
         self.print_scan(scan)
 
@@ -524,6 +1106,9 @@ class IsoBuilderApp(tk.Tk):
         if plan.options.auto_package:
             self.iso_name_var.set(plan.output_iso.name)
             self.label_var.set(plan.label)
+        output_card_var = getattr(self, "output_card_var", None)
+        if output_card_var is not None:
+            output_card_var.set(str(plan.output_iso))
 
         if operation == "command":
             try:
@@ -610,6 +1195,8 @@ class IsoBuilderApp(tk.Tk):
         self.backend_var.set("Auto")
         self.log("Backend scan complete.")
         if not self.detected_backends:
+            self.backend_card_var.set("Not detected")
+            self.backend_detail_var.set("Install or repair an ISO backend")
             self._set_status("No backend detected", "Install Windows ADK oscdimg or use the built-in fallback where available")
             self.log("WARNING: Koi ISO backend nahi mila.")
             self.log("Windows: oscdimg best hai; PowerShell IMAPI fallback bhi auto-detect hona chahiye.")
@@ -617,6 +1204,11 @@ class IsoBuilderApp(tk.Tk):
             self.log("macOS: hdiutil usually built-in hota hai. Linux: xorriso/genisoimage install karo.")
             self.log("Python standard library alone reliable UDF/ISO image create nahi karti.")
         else:
+            preferred = select_backend(self.detected_backends, self.profile_var.get())
+            self.backend_card_var.set(preferred.name if preferred else "Auto")
+            self.backend_detail_var.set(
+                f"{len(self.detected_backends)} available • ready"
+            )
             self._set_status("Backends detected", f"{len(self.detected_backends)} backend(s) available. Auto mode best option choose karega.")
             for b in self.detected_backends:
                 self.log(f"Found: {b.name} -> {b.executable} ({b.description})")

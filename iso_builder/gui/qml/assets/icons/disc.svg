@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="discBody" cx="42%" cy="34%" r="68%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".27" stop-color="#d9e8ff"/>
+      <stop offset=".52" stop-color="#d8c7ff"/>
+      <stop offset=".72" stop-color="#b6f0ff"/>
+      <stop offset="1" stop-color="#7798e8"/>
+    </radialGradient>
+    <linearGradient id="shine" x1="15" y1="12" x2="51" y2="51" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".95"/>
+      <stop offset=".5" stop-color="#ffffff" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#ffdaf4" stop-opacity=".75"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="25" fill="url(#discBody)" stroke="#ffffff" stroke-width="2"/>
+  <path d="M13 24c8-10 24-14 37-3L37 30 13 24Z" fill="url(#shine)"/>
+  <circle cx="32" cy="32" r="10" fill="#f7f6ff" fill-opacity=".7" stroke="#a9a5d5" stroke-width="2"/>
+  <circle cx="32" cy="32" r="4" fill="#6673ab"/>
+  <path d="M17 43c10 7 23 6 31-2" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity=".65"/>
+</svg>
