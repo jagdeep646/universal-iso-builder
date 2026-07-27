@@ -107,16 +107,16 @@ class QtGuiContractTests(unittest.TestCase):
             expected,
         )
 
-    def test_qml_theme_uses_system_signal_without_fake_build_progress(self) -> None:
+    def test_qml_theme_and_progress_use_bridge_state(self) -> None:
         qml = (
             ROOT / "iso_builder" / "gui" / "qml" / "Main.qml"
         ).read_text(encoding="utf-8")
 
         self.assertIn("bridge.systemDarkMode", qml)
-        self.assertIn('text: "Idle"', qml)
         self.assertIn("PremiumProgressBar", qml)
-        self.assertIn("value: 0.0", qml)
-        self.assertIn('text: "0%"', qml)
+        self.assertIn("value: bridge.buildProgress", qml)
+        self.assertIn("bridge.buildProgressPercent", qml)
+        self.assertIn("text: bridge.buildStatusText", qml)
 
     def test_frameless_window_has_all_native_resize_edges(self) -> None:
         qml = (

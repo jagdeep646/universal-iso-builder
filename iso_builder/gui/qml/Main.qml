@@ -63,6 +63,14 @@ ApplicationWindow {
                 commandDialog.open()
             }
         }
+
+        function onExecutionChanged() {
+            if (!bridge.isDryRunning
+                    && bridge.buildOutcome !== "IDLE"
+                    && bridge.buildOutcome !== "RUNNING") {
+                dryRunDialog.open()
+            }
+        }
     }
 
     Dialog {
@@ -170,6 +178,7 @@ ApplicationWindow {
                     Layout.preferredWidth: 92
                     Layout.preferredHeight: 42
                     text: "Browse"
+                    enabled: !bridge.isDryRunning
                     onClicked: outputFolderDialog.open()
                     contentItem: Text {
                         text: outputBrowseButton.text
@@ -208,7 +217,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
                     text: bridge.isoName
-                    enabled: !bridge.autoPackage
+                    enabled: !bridge.autoPackage && !bridge.isDryRunning
                     selectByMouse: true
                     onEditingFinished: bridge.setIsoName(text)
                     color: window.ink
@@ -227,7 +236,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
                     text: bridge.volumeLabel
-                    enabled: !bridge.autoPackage
+                    enabled: !bridge.autoPackage && !bridge.isDryRunning
                     selectByMouse: true
                     onEditingFinished: bridge.setVolumeLabel(text)
                     color: window.ink
@@ -256,6 +265,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
                     model: bridge.profileOptions
+                    enabled: !bridge.isDryRunning
                     currentIndex: Math.max(0, bridge.profileOptions.indexOf(
                                                bridge.selectedProfile))
                     onActivated: bridge.setProfile(currentText)
@@ -266,6 +276,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
                     model: bridge.backendOptions
+                    enabled: !bridge.isDryRunning
                     currentIndex: Math.max(0, bridge.backendOptions.indexOf(
                                                bridge.selectedBackend))
                     onActivated: bridge.setBackend(currentText)
@@ -281,21 +292,25 @@ ApplicationWindow {
                 CheckBox {
                     text: "Auto package folder"
                     checked: bridge.autoPackage
+                    enabled: !bridge.isDryRunning
                     onToggled: bridge.setAutoPackage(checked)
                 }
                 CheckBox {
                     text: "Include hidden files"
                     checked: bridge.includeHidden
+                    enabled: !bridge.isDryRunning
                     onToggled: bridge.setIncludeHidden(checked)
                 }
                 CheckBox {
                     text: "Generate SHA256"
                     checked: bridge.generateHash
+                    enabled: !bridge.isDryRunning
                     onToggled: bridge.setGenerateHash(checked)
                 }
                 CheckBox {
                     text: "Optimize duplicates"
                     checked: bridge.optimizeDuplicates
+                    enabled: !bridge.isDryRunning
                     onToggled: bridge.setOptimizeDuplicates(checked)
                 }
             }
@@ -328,6 +343,17 @@ ApplicationWindow {
                     text: bridge.isPlanning ? "Preparing command..." : "Show Command"
                     enabled: bridge.canShowCommand
                     onClicked: bridge.showCommand()
+                }
+
+                GradientButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 46
+                    text: bridge.isDryRunning ? "Running..." : "Run Dry Test"
+                    enabled: bridge.canRunDryRun
+                    onClicked: {
+                        buildSettingsDialog.close()
+                        bridge.runDryRun()
+                    }
                 }
             }
         }
@@ -415,6 +441,106 @@ ApplicationWindow {
                 Layout.preferredHeight: 46
                 text: "Close"
                 onClicked: commandDialog.close()
+            }
+        }
+    }
+
+    Dialog {
+        id: dryRunDialog
+        width: Math.min(780, window.width - 70)
+        height: Math.min(570, window.height - 70)
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+
+        background: Rectangle {
+            radius: 24
+            color: window.darkMode ? "#20263c" : "#f8f8fd"
+            border.width: 1
+            border.color: window.darkMode ? "#505a74" : "#ffffff"
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 24
+            spacing: 12
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+
+                ClayBadge {
+                    Layout.preferredWidth: 46
+                    Layout.preferredHeight: 46
+                    iconSource: bridge.buildOutcome === "DRY RUN"
+                                ? Qt.resolvedUrl("assets/icons/check.svg")
+                                : ""
+                    symbol: bridge.buildOutcome === "DRY RUN" ? "" : "!"
+                    symbolSize: 18
+                    accent: bridge.buildOutcome === "DRY RUN"
+                            ? window.green
+                            : window.orange
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    Text {
+                        text: bridge.buildOutcome === "DRY RUN"
+                              ? "Dry Run Complete"
+                              : "Dry Run Failed"
+                        color: window.ink
+                        font.pixelSize: 22
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: bridge.buildOutcome === "DRY RUN"
+                              ? "Planning and validation completed without creating an ISO."
+                              : bridge.buildError
+                        color: bridge.buildOutcome === "DRY RUN"
+                               ? window.muted
+                               : "#ef5965"
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: bridge.lastExecutionOutput.length > 0
+                text: "Planned output: " + bridge.lastExecutionOutput
+                color: window.muted
+                font.pixelSize: 12
+                elide: Text.ElideMiddle
+            }
+
+            TextArea {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                text: bridge.buildLogText.length > 0
+                      ? bridge.buildLogText
+                      : bridge.buildError
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.WrapAnywhere
+                color: window.ink
+                background: Rectangle {
+                    radius: 14
+                    color: window.darkMode ? "#161b2e" : "#ffffff"
+                    border.width: 1
+                    border.color: window.darkMode ? "#454e68" : "#dcdeea"
+                }
+            }
+
+            GradientButton {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 46
+                text: "Close"
+                onClicked: dryRunDialog.close()
             }
         }
     }
@@ -534,6 +660,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: "Settings"
                         iconSource: Qt.resolvedUrl("assets/icons/settings.svg")
+                        enabled: !bridge.isDryRunning
                         onClicked: buildSettingsDialog.open()
                     }
 
@@ -959,6 +1086,7 @@ ApplicationWindow {
                                             Layout.preferredWidth: 82
                                             Layout.preferredHeight: 32
                                             text: "Browse"
+                                            enabled: !bridge.isDryRunning
                                             onClicked: sourceFolderDialog.open()
                                             contentItem: Text {
                                                 text: sourceBrowseButton.text
@@ -980,6 +1108,7 @@ ApplicationWindow {
 
                                     DropArea {
                                         anchors.fill: parent
+                                        enabled: !bridge.isDryRunning
                                         onDropped: function(drop) {
                                             if (drop.hasUrls && drop.urls.length > 0) {
                                                 bridge.selectSourceFolder(drop.urls[0])
@@ -1051,11 +1180,11 @@ ApplicationWindow {
                                 GradientButton {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 44
-                                    text: bridge.isPlanning
-                                          ? "Preparing command..."
-                                          : "Show Command"
-                                    enabled: bridge.canShowCommand
-                                    onClicked: bridge.showCommand()
+                                    text: bridge.isDryRunning
+                                          ? "Running safe dry test..."
+                                          : "Run Dry Test"
+                                    enabled: bridge.canRunDryRun
+                                    onClicked: bridge.runDryRun()
                                 }
                             }
                         }
@@ -1088,6 +1217,7 @@ ApplicationWindow {
                                         text: "↻"
                                         width: 34
                                         height: 34
+                                        enabled: !bridge.isDryRunning
                                         onClicked: bridge.refreshBackends()
                                         contentItem: Text {
                                             text: parent.text
@@ -1217,7 +1347,7 @@ ApplicationWindow {
                                         font.weight: Font.DemiBold
                                     }
                                     Text {
-                                        text: "Idle"
+                                        text: bridge.buildStatusText
                                         color: window.muted
                                         font.pixelSize: 12
                                     }
@@ -1230,14 +1360,14 @@ ApplicationWindow {
                                     PremiumProgressBar {
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 13
-                                        value: 0.0
+                                        value: bridge.buildProgress
                                         trackColor: window.darkMode
                                                     ? "#30364d"
                                                     : "#e8e8f1"
                                     }
 
                                     Text {
-                                        text: "0%"
+                                        text: bridge.buildProgressPercent + "%"
                                         color: window.ink
                                         font.pixelSize: 13
                                         font.weight: Font.DemiBold
@@ -1274,9 +1404,11 @@ ApplicationWindow {
                                     }
                                     Text {
                                         Layout.fillWidth: true
-                                        text: bridge.sourceFolder.length > 0
-                                              ? bridge.outputPreview
-                                              : "No ISO output yet"
+                                        text: bridge.lastExecutionOutput.length > 0
+                                              ? bridge.lastExecutionOutput + " (dry run)"
+                                              : (bridge.sourceFolder.length > 0
+                                                 ? bridge.outputPreview
+                                                 : "No ISO output yet")
                                         color: window.muted
                                         font.pixelSize: 11
                                         elide: Text.ElideRight

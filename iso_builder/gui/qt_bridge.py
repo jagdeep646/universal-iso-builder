@@ -12,7 +12,15 @@ from PySide6.QtGui import QGuiApplication
 from ..backends import detect_backends, select_backend
 from ..backends.imapi import cleanup_temp_script_from_command
 from ..constants import APP_VERSION, PROFILE_AUTO, PROFILES
-from ..models import Backend, BuildOptions, BuildPlan, BuildRequest, ScanResult
+from ..execution import execute_build_plan
+from ..models import (
+    Backend,
+    BuildExecutionResult,
+    BuildOptions,
+    BuildPlan,
+    BuildRequest,
+    ScanResult,
+)
 from ..naming import auto_names_from_source
 from ..planner import prepare_build_plan
 from ..scanning import scan_source_folder
@@ -30,9 +38,12 @@ class QtIsoBridge(QObject):
     settingsChanged = Signal()
     planningChanged = Signal()
     commandChanged = Signal()
+    executionChanged = Signal()
     availabilityChanged = Signal()
     _scanFinished = Signal(int, object, str)
     _planFinished = Signal(int, object, str)
+    _dryRunProgress = Signal(int, str, float)
+    _dryRunFinished = Signal(int, object, str, object)
 
     def __init__(
         self,
@@ -40,6 +51,10 @@ class QtIsoBridge(QObject):
         scanner: Callable[[Path, str, bool], ScanResult] = scan_source_folder,
         namer: Callable[[Path], tuple[str, str, str]] = auto_names_from_source,
         planner: Callable[[BuildRequest, list[Backend]], BuildPlan] = prepare_build_plan,
+        executor: Callable[
+            [BuildPlan, Callable[[str], None]],
+            BuildExecutionResult,
+        ] = execute_build_plan,
         command_cleanup: Callable[[Sequence[str]], None] = cleanup_temp_script_from_command,
         parent: QObject | None = None,
     ) -> None:
@@ -48,6 +63,7 @@ class QtIsoBridge(QObject):
         self._scanner = scanner
         self._namer = namer
         self._planner = planner
+        self._executor = executor
         self._command_cleanup = command_cleanup
         self._backends: list[Backend] = []
         self._status_title = "Checking backends"
@@ -79,8 +95,18 @@ class QtIsoBridge(QObject):
         self._command_warnings_text = ""
         self._planning_error = ""
         self._planned_output = ""
+        self._is_dry_running = False
+        self._execution_generation = 0
+        self._build_outcome = "IDLE"
+        self._build_status_text = "Ready for dry run"
+        self._build_progress = 0.0
+        self._build_log_text = ""
+        self._build_error = ""
+        self._last_execution_output = ""
         self._scanFinished.connect(self._apply_scan_result)
         self._planFinished.connect(self._apply_plan_result)
+        self._dryRunProgress.connect(self._apply_dry_run_progress)
+        self._dryRunFinished.connect(self._apply_dry_run_result)
 
         application = QGuiApplication.instance()
         if isinstance(application, QGuiApplication):
@@ -222,6 +248,7 @@ class QtIsoBridge(QObject):
             and self._backends
             and not self._is_scanning
             and not self._is_planning
+            and not self._is_dry_running
         )
 
     @Property(str, notify=commandChanged)
@@ -240,6 +267,49 @@ class QtIsoBridge(QObject):
     def plannedOutput(self) -> str:
         return self._planned_output
 
+    @Property(bool, notify=executionChanged)
+    def isDryRunning(self) -> bool:
+        return self._is_dry_running
+
+    @Property(bool, notify=availabilityChanged)
+    def canRunDryRun(self) -> bool:
+        return bool(
+            self._source_folder
+            and self._output_folder
+            and self._backends
+            and not self._is_scanning
+            and not self._is_planning
+            and not self._is_dry_running
+        )
+
+    @Property(str, notify=executionChanged)
+    def buildOutcome(self) -> str:
+        return self._build_outcome
+
+    @Property(str, notify=executionChanged)
+    def buildStatusText(self) -> str:
+        return self._build_status_text
+
+    @Property(float, notify=executionChanged)
+    def buildProgress(self) -> float:
+        return self._build_progress
+
+    @Property(int, notify=executionChanged)
+    def buildProgressPercent(self) -> int:
+        return round(self._build_progress * 100)
+
+    @Property(str, notify=executionChanged)
+    def buildLogText(self) -> str:
+        return self._build_log_text
+
+    @Property(str, notify=executionChanged)
+    def buildError(self) -> str:
+        return self._build_error
+
+    @Property(str, notify=executionChanged)
+    def lastExecutionOutput(self) -> str:
+        return self._last_execution_output
+
     def _on_color_scheme_changed(self, color_scheme: Qt.ColorScheme) -> None:
         system_dark_mode = color_scheme == Qt.ColorScheme.Dark
         if self._system_dark_mode != system_dark_mode:
@@ -250,6 +320,8 @@ class QtIsoBridge(QObject):
     @Slot(str)
     def selectSourceFolder(self, folder: QUrl | str) -> None:
         """Select a source, apply verified auto naming, then scan off the UI thread."""
+        if self._is_dry_running:
+            return
         source_text = folder.toLocalFile() if isinstance(folder, QUrl) else folder
         source = Path(source_text).expanduser()
         if not source.exists() or not source.is_dir():
@@ -338,6 +410,8 @@ class QtIsoBridge(QObject):
     @Slot(QUrl)
     @Slot(str)
     def selectOutputFolder(self, folder: QUrl | str) -> None:
+        if self._is_dry_running:
+            return
         output_text = folder.toLocalFile() if isinstance(folder, QUrl) else folder
         output = Path(output_text).expanduser()
         if not output.exists() or not output.is_dir():
@@ -351,18 +425,24 @@ class QtIsoBridge(QObject):
 
     @Slot(str)
     def setVolumeLabel(self, value: str) -> None:
+        if self._is_dry_running:
+            return
         self._volume_label = value
         self._invalidate_command()
         self.settingsChanged.emit()
 
     @Slot(str)
     def setIsoName(self, value: str) -> None:
+        if self._is_dry_running:
+            return
         self._iso_name = value
         self._invalidate_command()
         self.settingsChanged.emit()
 
     @Slot(str)
     def setProfile(self, value: str) -> None:
+        if self._is_dry_running:
+            return
         if value not in PROFILES:
             return
         self._selected_profile = value
@@ -373,6 +453,8 @@ class QtIsoBridge(QObject):
 
     @Slot(str)
     def setBackend(self, value: str) -> None:
+        if self._is_dry_running:
+            return
         if value not in self.backendOptions:
             return
         self._selected_backend = value
@@ -383,24 +465,32 @@ class QtIsoBridge(QObject):
 
     @Slot(bool)
     def setIncludeHidden(self, value: bool) -> None:
+        if self._is_dry_running:
+            return
         self._include_hidden = value
         self._invalidate_command()
         self.settingsChanged.emit()
 
     @Slot(bool)
     def setGenerateHash(self, value: bool) -> None:
+        if self._is_dry_running:
+            return
         self._generate_hash = value
         self._invalidate_command()
         self.settingsChanged.emit()
 
     @Slot(bool)
     def setOptimizeDuplicates(self, value: bool) -> None:
+        if self._is_dry_running:
+            return
         self._optimize_duplicates = value
         self._invalidate_command()
         self.settingsChanged.emit()
 
     @Slot(bool)
     def setAutoPackage(self, value: bool) -> None:
+        if self._is_dry_running:
+            return
         self._auto_package = value
         self._invalidate_command()
         self.settingsChanged.emit()
@@ -411,6 +501,16 @@ class QtIsoBridge(QObject):
         self._planning_error = ""
         self._planned_output = ""
         self.commandChanged.emit()
+        self._reset_dry_run_result()
+
+    def _reset_dry_run_result(self) -> None:
+        self._build_outcome = "IDLE"
+        self._build_status_text = "Ready for dry run"
+        self._build_progress = 0.0
+        self._build_log_text = ""
+        self._build_error = ""
+        self._last_execution_output = ""
+        self.executionChanged.emit()
 
     def _update_preferred_backend(self) -> None:
         if not self._backends:
@@ -524,8 +624,129 @@ class QtIsoBridge(QObject):
         self.availabilityChanged.emit()
 
     @Slot()
+    def runDryRun(self) -> None:
+        """Prepare and execute a dry-run-only snapshot off the Qt UI thread."""
+        if not self.canRunDryRun:
+            self._build_outcome = "FAIL"
+            self._build_status_text = "Dry run unavailable"
+            self._build_progress = 0.0
+            self._build_log_text = ""
+            self._build_error = (
+                "Select valid source/output folders, wait for scanning, "
+                "and ensure an ISO backend is available."
+            )
+            self._last_execution_output = ""
+            self.executionChanged.emit()
+            return
+
+        request = self._snapshot_build_request()
+        backends = list(self._backends)
+        self._execution_generation += 1
+        generation = self._execution_generation
+        self._is_dry_running = True
+        self._build_outcome = "RUNNING"
+        self._build_status_text = "Preparing dry-run plan..."
+        self._build_progress = 0.12
+        self._build_log_text = ""
+        self._build_error = ""
+        self._last_execution_output = ""
+        self.executionChanged.emit()
+        self.availabilityChanged.emit()
+
+        worker = threading.Thread(
+            target=self._dry_run_worker,
+            args=(generation, request, backends),
+            name=f"qt-dry-run-{generation}",
+            daemon=True,
+        )
+        worker.start()
+
+    def _dry_run_worker(
+        self,
+        generation: int,
+        request: BuildRequest,
+        backends: list[Backend],
+    ) -> None:
+        plan = None
+        logs: list[str] = []
+        try:
+            plan = self._planner(request, backends)
+            if not plan.options.dry_run:
+                raise RuntimeError("Qt dry-run request produced a non-dry-run plan.")
+            self._dryRunProgress.emit(
+                generation,
+                "Executing safe dry run...",
+                0.62,
+            )
+            result = self._executor(plan, logs.append)
+            self._dryRunFinished.emit(generation, result, "", logs)
+        except Exception as exc:
+            self._dryRunFinished.emit(generation, None, str(exc), logs)
+        finally:
+            if isinstance(plan, BuildPlan):
+                try:
+                    self._command_cleanup(plan.command)
+                except Exception:
+                    pass
+
+    @Slot(int, str, float)
+    def _apply_dry_run_progress(
+        self,
+        generation: int,
+        status_text: str,
+        progress: float,
+    ) -> None:
+        if generation != self._execution_generation or not self._is_dry_running:
+            return
+        self._build_status_text = status_text
+        self._build_progress = min(1.0, max(0.0, progress))
+        self.executionChanged.emit()
+
+    @Slot(int, object, str, object)
+    def _apply_dry_run_result(
+        self,
+        generation: int,
+        result: object,
+        error: str,
+        logs: object,
+    ) -> None:
+        if generation != self._execution_generation:
+            return
+
+        self._is_dry_running = False
+        log_lines = [str(line) for line in logs] if isinstance(logs, list) else []
+        self._build_log_text = "\n".join(log_lines)
+        if error:
+            self._build_outcome = "FAIL"
+            self._build_status_text = "Dry run failed"
+            self._build_progress = 0.0
+            self._build_error = error
+            self._last_execution_output = ""
+        elif isinstance(result, BuildExecutionResult):
+            self._build_outcome = result.outcome
+            self._last_execution_output = str(result.output_iso)
+            self._build_error = result.error or ""
+            if result.outcome == "DRY RUN":
+                self._build_status_text = "Dry run complete"
+                self._build_progress = 1.0
+            else:
+                self._build_status_text = f"Dry run {result.outcome.lower()}"
+                self._build_progress = 0.0
+        else:
+            self._build_outcome = "FAIL"
+            self._build_status_text = "Dry run failed"
+            self._build_progress = 0.0
+            self._build_error = "Dry-run execution returned an invalid result."
+            self._last_execution_output = ""
+
+        self.executionChanged.emit()
+        self.availabilityChanged.emit()
+
+    @Slot()
     def refreshBackends(self) -> None:
         """Refresh the read-only backend snapshot shown by the QML shell."""
+        if self._is_dry_running:
+            return
         try:
             backends = list(self._detector())
         except Exception as exc:
