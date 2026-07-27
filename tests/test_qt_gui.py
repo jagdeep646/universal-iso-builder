@@ -201,7 +201,8 @@ class QtGuiContractTests(unittest.TestCase):
         self.assertIn("color: root.valueColor", status_card)
         self.assertIn("color: root.captionColor", status_card)
         self.assertIn("control.enabled ? 1.0 : 0.9", gradient_button)
-        self.assertIn("opacity: 0.86", qml)
+        self.assertIn("sourceBrowseButton.hovered", qml)
+        self.assertIn("sourceBrowseButton.down ? 0.78 : 0.92", qml)
 
     def test_existing_production_entrypoint_remains_tkinter(self) -> None:
         launcher = (ROOT / "universal_iso_builder_v1_4_1.py").read_text(

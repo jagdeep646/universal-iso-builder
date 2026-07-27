@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Effects
 import "components"
@@ -38,6 +39,12 @@ ApplicationWindow {
         } else {
             window.showMaximized()
         }
+    }
+
+    FolderDialog {
+        id: sourceFolderDialog
+        title: "Select source setup folder"
+        onAccepted: bridge.selectSourceFolder(selectedFolder)
     }
 
     Rectangle {
@@ -456,8 +463,8 @@ ApplicationWindow {
                             captionColor: window.muted
                             valueColor: window.ink
                             caption: "Source folder"
-                            value: "Not selected"
-                            detail: "Connect in Q4"
+                            value: bridge.sourceName
+                            detail: bridge.sourceDetail
                             iconSource: Qt.resolvedUrl("assets/icons/folder.svg")
                             accent: window.blue
                         }
@@ -568,23 +575,44 @@ ApplicationWindow {
                                         }
                                         Text {
                                             Layout.fillWidth: true
-                                            text: "Choose a source folder in Q4"
+                                            text: bridge.sourceFolder.length > 0
+                                                  ? bridge.sourceFolder
+                                                  : "Choose or drop a source folder"
                                             color: window.muted
                                             font.pixelSize: 13
                                             elide: Text.ElideMiddle
                                         }
-                                        Rectangle {
+
+                                        Button {
+                                            id: sourceBrowseButton
                                             Layout.preferredWidth: 82
                                             Layout.preferredHeight: 32
-                                            radius: 10
-                                            color: "#6553d9"
-                                            opacity: 0.86
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: "Browse"
+                                            text: "Browse"
+                                            onClicked: sourceFolderDialog.open()
+                                            contentItem: Text {
+                                                text: sourceBrowseButton.text
                                                 color: "white"
                                                 font.pixelSize: 12
                                                 font.weight: Font.DemiBold
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                radius: 10
+                                                color: sourceBrowseButton.hovered
+                                                       ? "#765ff0"
+                                                       : "#6553d9"
+                                                opacity: sourceBrowseButton.down ? 0.78 : 0.92
+                                            }
+                                        }
+                                    }
+
+                                    DropArea {
+                                        anchors.fill: parent
+                                        onDropped: function(drop) {
+                                            if (drop.hasUrls && drop.urls.length > 0) {
+                                                bridge.selectSourceFolder(drop.urls[0])
+                                                drop.acceptProposedAction()
                                             }
                                         }
                                     }
@@ -613,7 +641,7 @@ ApplicationWindow {
                                                 anchors.left: parent.left
                                                 anchors.leftMargin: 14
                                                 anchors.verticalCenter: parent.verticalCenter
-                                                text: "ISO_LABEL"
+                                                text: bridge.volumeLabel
                                                 color: window.muted
                                                 font.pixelSize: 12
                                             }
@@ -726,8 +754,12 @@ ApplicationWindow {
                                         {
                                             symbol: "○",
                                             icon: "",
-                                            title: "Build workflow",
-                                            detail: "Safely deferred to Q4",
+                                            title: bridge.isScanning
+                                                   ? "Scanning source"
+                                                   : "Source scan",
+                                            detail: bridge.sourceFolder.length > 0
+                                                    ? bridge.sourceDetail
+                                                    : "Choose a source folder",
                                             accent: window.blue
                                         }
                                     ]
@@ -868,7 +900,9 @@ ApplicationWindow {
                                     }
                                     Text {
                                         Layout.fillWidth: true
-                                        text: "No ISO output yet"
+                                        text: bridge.sourceFolder.length > 0
+                                              ? bridge.isoName + " (planned)"
+                                              : "No ISO output yet"
                                         color: window.muted
                                         font.pixelSize: 11
                                         elide: Text.ElideRight
