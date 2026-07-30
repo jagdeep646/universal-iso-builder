@@ -5,6 +5,7 @@ Item {
     id: root
 
     property real value: 0.0
+    property bool indeterminate: false
     property color startColor: "#7d51f5"
     property color endColor: "#388ef7"
     property color trackColor: "#e8e8f1"
@@ -21,6 +22,7 @@ Item {
 
         Rectangle {
             id: fill
+            visible: !root.indeterminate
             width: root.value > 0
                    ? Math.max(parent.height, parent.width * Math.min(1, Math.max(0, root.value)))
                    : 0
@@ -51,6 +53,34 @@ Item {
 
             Behavior on width {
                 NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
+            }
+        }
+
+        Rectangle {
+            id: indeterminateFill
+            visible: root.indeterminate
+            width: Math.max(parent.height * 2, parent.width * 0.28)
+            height: parent.height
+            radius: height / 2
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: root.startColor }
+                GradientStop { position: 0.72; color: root.endColor }
+                GradientStop { position: 1.0; color: "#57bcff" }
+            }
+            layer.enabled: visible
+            layer.effect: MultiEffect {
+                shadowEnabled: true
+                shadowColor: "#704f75ee"
+                shadowBlur: 0.7
+            }
+
+            NumberAnimation on x {
+                from: -indeterminateFill.width
+                to: track.width
+                duration: 1200
+                loops: Animation.Infinite
+                running: root.indeterminate && root.visible
             }
         }
     }

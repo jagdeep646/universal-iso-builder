@@ -73,7 +73,7 @@ class QtGuiContractTests(unittest.TestCase):
         requirement = (ROOT / "requirements-gui.txt").read_text(encoding="utf-8")
         self.assertEqual(requirement.strip(), "PySide6==6.11.1")
 
-    def test_qml_shell_exists_without_unimplemented_product_claims(self) -> None:
+    def test_qml_shell_exposes_only_verified_product_claims(self) -> None:
         qml = (
             ROOT / "iso_builder" / "gui" / "qml" / "Main.qml"
         ).read_text(encoding="utf-8")
@@ -83,7 +83,9 @@ class QtGuiContractTests(unittest.TestCase):
         self.assertIn("Qt.FramelessWindowHint", qml)
         self.assertIn("DragHandler", qml)
         self.assertIn("height: 150", qml)
-        self.assertIn("Build workflow connects in Q4", qml)
+        self.assertIn('"Show Command"', qml)
+        self.assertIn("bridge.startBuild()", qml)
+        self.assertIn("realBuildConfirmDialog", qml)
         self.assertNotIn("Bootable ISO", qml)
         self.assertNotIn("ISO Verified", qml)
         self.assertNotIn("72%", qml)
@@ -106,16 +108,16 @@ class QtGuiContractTests(unittest.TestCase):
             expected,
         )
 
-    def test_qml_theme_uses_system_signal_without_fake_build_progress(self) -> None:
+    def test_qml_theme_and_progress_use_bridge_state(self) -> None:
         qml = (
             ROOT / "iso_builder" / "gui" / "qml" / "Main.qml"
         ).read_text(encoding="utf-8")
 
         self.assertIn("bridge.systemDarkMode", qml)
-        self.assertIn('text: "Idle"', qml)
         self.assertIn("PremiumProgressBar", qml)
-        self.assertIn("value: 0.0", qml)
-        self.assertIn('text: "0%"', qml)
+        self.assertIn("value: bridge.buildProgress", qml)
+        self.assertIn("bridge.buildProgressPercent", qml)
+        self.assertIn("text: bridge.buildStatusText", qml)
 
     def test_frameless_window_has_all_native_resize_edges(self) -> None:
         qml = (
@@ -201,7 +203,46 @@ class QtGuiContractTests(unittest.TestCase):
         self.assertIn("color: root.valueColor", status_card)
         self.assertIn("color: root.captionColor", status_card)
         self.assertIn("control.enabled ? 1.0 : 0.9", gradient_button)
-        self.assertIn("opacity: 0.86", qml)
+        self.assertIn("sourceBrowseButton.hovered", qml)
+        self.assertIn("sourceBrowseButton.down ? 0.78 : 0.92", qml)
+        self.assertEqual(qml.count("palette.windowText: window.ink"), 4)
+        self.assertEqual(qml.count("palette.text: window.ink"), 4)
+
+    def test_action_navigation_and_window_controls_keep_premium_color_contract(self) -> None:
+        qml = (
+            ROOT / "iso_builder" / "gui" / "qml" / "Main.qml"
+        ).read_text(encoding="utf-8")
+        nav_button = (
+            ROOT
+            / "iso_builder"
+            / "gui"
+            / "qml"
+            / "components"
+            / "NavButton.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(': "Show Command"', qml)
+        self.assertIn('startColor: "#7857f3"', qml)
+        self.assertIn('endColor: "#3d8df6"', qml)
+        self.assertIn(': "Dry Test"', qml)
+        self.assertIn('startColor: "#32bfe8"', qml)
+        self.assertIn('endColor: "#7358ee"', qml)
+        self.assertIn('startColor: "#ff8b5c"', qml)
+        self.assertIn('endColor: "#ef4f73"', qml)
+
+        self.assertIn(
+            "readonly property bool visualHighlight: control.hovered",
+            nav_button,
+        )
+        self.assertNotIn("control.activeFocus", nav_button)
+        self.assertNotIn("selected: true", qml)
+
+        for color in ("#438cf2", "#7655eb", "#ed5262"):
+            self.assertIn(f'baseColor: "{color}"', qml)
+        self.assertIn("width: 34", qml)
+        self.assertIn("height: 34", qml)
+        self.assertIn("color: parent.hovered", qml)
+        self.assertIn(": modelData.baseColor", qml)
 
     def test_existing_production_entrypoint_remains_tkinter(self) -> None:
         launcher = (ROOT / "universal_iso_builder_v1_4_1.py").read_text(

@@ -1,1 +1,1 @@
-"""Tkinter GUI package."""
+"""Desktop GUI package."""

@@ -17,6 +17,8 @@ htmlcov/
 build/
 dist/
 dist-onefile/
+dist-qt/
+dist-qt-onefile/
 *.spec
 
 # Generated ISO packages and hashes

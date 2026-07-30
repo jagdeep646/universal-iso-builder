@@ -8,6 +8,7 @@ Button {
     property string symbol: "•"
     property url iconSource: ""
     property bool selected: false
+    readonly property bool visualHighlight: control.hovered
 
     implicitHeight: 44
     hoverEnabled: true
@@ -31,7 +32,9 @@ Button {
                 layer.enabled: true
                 layer.effect: MultiEffect {
                     colorization: 1.0
-                    colorizationColor: control.selected ? "#ffffff" : "#c8cee2"
+                    colorizationColor: control.visualHighlight
+                                       ? "#ffffff"
+                                       : "#c8cee2"
                 }
             }
 
@@ -39,7 +42,7 @@ Button {
                 anchors.fill: parent
                 visible: control.iconSource.toString().length === 0
                 text: control.symbol
-                color: control.selected ? "white" : "#c9cfe4"
+                color: control.visualHighlight ? "white" : "#c9cfe4"
                 font.pixelSize: 18
                 font.weight: Font.DemiBold
                 horizontalAlignment: Text.AlignHCenter
@@ -50,20 +53,18 @@ Button {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: control.text
-            color: control.selected ? "white" : "#d9deef"
+            color: control.visualHighlight ? "white" : "#d9deef"
             font.pixelSize: 14
-            font.weight: control.selected ? Font.DemiBold : Font.Normal
+            font.weight: control.visualHighlight ? Font.DemiBold : Font.Normal
         }
     }
 
     background: Rectangle {
         radius: 14
-        color: control.selected
-               ? "#7355ec"
-               : (control.hovered ? "#24325f" : "transparent")
-        border.width: control.selected ? 1 : 0
+        color: control.visualHighlight ? "#7355ec" : "transparent"
+        border.width: control.visualHighlight ? 1 : 0
         border.color: "#9e8cff"
-        layer.enabled: control.selected
+        layer.enabled: control.visualHighlight
         layer.effect: MultiEffect {
             shadowEnabled: true
             shadowColor: "#775a52ee"
