@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
+import re
 import threading
 
-from PySide6.QtCore import Property, QObject, Qt, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 
 from ..backends import detect_backends, select_backend
 from ..backends.imapi import cleanup_temp_script_from_command
+from ..cancellation import BuildCancellation
 from ..constants import APP_VERSION, PROFILE_AUTO, PROFILES
 from ..execution import execute_build_plan
 from ..models import (
@@ -40,10 +42,15 @@ class QtIsoBridge(QObject):
     commandChanged = Signal()
     executionChanged = Signal()
     availabilityChanged = Signal()
+    safeToClose = Signal()
     _scanFinished = Signal(int, object, str)
     _planFinished = Signal(int, object, str)
     _dryRunProgress = Signal(int, str, float)
     _dryRunFinished = Signal(int, object, str, object)
+    _buildProgress = Signal(int, str, float, bool)
+    _buildLog = Signal(int, str)
+    _buildFinished = Signal(int, object, str, object)
+    _buildWarningRequested = Signal(int, object, object, object)
 
     def __init__(
         self,
@@ -51,10 +58,7 @@ class QtIsoBridge(QObject):
         scanner: Callable[[Path, str, bool], ScanResult] = scan_source_folder,
         namer: Callable[[Path], tuple[str, str, str]] = auto_names_from_source,
         planner: Callable[[BuildRequest, list[Backend]], BuildPlan] = prepare_build_plan,
-        executor: Callable[
-            [BuildPlan, Callable[[str], None]],
-            BuildExecutionResult,
-        ] = execute_build_plan,
+        executor: Callable[..., BuildExecutionResult] = execute_build_plan,
         command_cleanup: Callable[[Sequence[str]], None] = cleanup_temp_script_from_command,
         parent: QObject | None = None,
     ) -> None:
@@ -96,6 +100,8 @@ class QtIsoBridge(QObject):
         self._planning_error = ""
         self._planned_output = ""
         self._is_dry_running = False
+        self._build_progress_indeterminate = False
+        self._build_hash_path = ""
         self._execution_generation = 0
         self._build_outcome = "IDLE"
         self._build_status_text = "Ready for dry run"
@@ -103,10 +109,23 @@ class QtIsoBridge(QObject):
         self._build_log_text = ""
         self._build_error = ""
         self._last_execution_output = ""
+        self._execution_mode = "IDLE"
+        self._is_build_running = False
+        self._build_progress_indeterminate = False
+        self._build_hash_path = ""
+        self._build_cancellation: BuildCancellation | None = None
+        self._close_requested = False
+        self._build_warning_pending = False
+        self._build_warning_text = ""
+        self._build_warning_context: tuple[threading.Event, dict[str, bool]] | None = None
         self._scanFinished.connect(self._apply_scan_result)
         self._planFinished.connect(self._apply_plan_result)
         self._dryRunProgress.connect(self._apply_dry_run_progress)
         self._dryRunFinished.connect(self._apply_dry_run_result)
+        self._buildProgress.connect(self._apply_build_progress)
+        self._buildLog.connect(self._apply_build_log)
+        self._buildFinished.connect(self._apply_build_result)
+        self._buildWarningRequested.connect(self._apply_build_warning_request)
 
         application = QGuiApplication.instance()
         if isinstance(application, QGuiApplication):
@@ -249,6 +268,7 @@ class QtIsoBridge(QObject):
             and not self._is_scanning
             and not self._is_planning
             and not self._is_dry_running
+            and not self._is_build_running
         )
 
     @Property(str, notify=commandChanged)
@@ -280,7 +300,28 @@ class QtIsoBridge(QObject):
             and not self._is_scanning
             and not self._is_planning
             and not self._is_dry_running
+            and not self._is_build_running
         )
+
+    @Property(bool, notify=availabilityChanged)
+    def canStartBuild(self) -> bool:
+        return bool(
+            self._source_folder
+            and self._output_folder
+            and self._backends
+            and not self._is_scanning
+            and not self._is_planning
+            and not self._is_dry_running
+            and not self._is_build_running
+        )
+
+    @Property(bool, notify=executionChanged)
+    def isBuildRunning(self) -> bool:
+        return self._is_build_running
+
+    @Property(str, notify=executionChanged)
+    def executionMode(self) -> str:
+        return self._execution_mode
 
     @Property(str, notify=executionChanged)
     def buildOutcome(self) -> str:
@@ -293,6 +334,10 @@ class QtIsoBridge(QObject):
     @Property(float, notify=executionChanged)
     def buildProgress(self) -> float:
         return self._build_progress
+
+    @Property(bool, notify=executionChanged)
+    def buildProgressIndeterminate(self) -> bool:
+        return self._build_progress_indeterminate
 
     @Property(int, notify=executionChanged)
     def buildProgressPercent(self) -> int:
@@ -310,6 +355,18 @@ class QtIsoBridge(QObject):
     def lastExecutionOutput(self) -> str:
         return self._last_execution_output
 
+    @Property(str, notify=executionChanged)
+    def buildHashPath(self) -> str:
+        return self._build_hash_path
+
+    @Property(bool, notify=executionChanged)
+    def buildWarningPending(self) -> bool:
+        return self._build_warning_pending
+
+    @Property(str, notify=executionChanged)
+    def buildWarningText(self) -> str:
+        return self._build_warning_text
+
     def _on_color_scheme_changed(self, color_scheme: Qt.ColorScheme) -> None:
         system_dark_mode = color_scheme == Qt.ColorScheme.Dark
         if self._system_dark_mode != system_dark_mode:
@@ -320,7 +377,7 @@ class QtIsoBridge(QObject):
     @Slot(str)
     def selectSourceFolder(self, folder: QUrl | str) -> None:
         """Select a source, apply verified auto naming, then scan off the UI thread."""
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         source_text = folder.toLocalFile() if isinstance(folder, QUrl) else folder
         source = Path(source_text).expanduser()
@@ -410,7 +467,7 @@ class QtIsoBridge(QObject):
     @Slot(QUrl)
     @Slot(str)
     def selectOutputFolder(self, folder: QUrl | str) -> None:
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         output_text = folder.toLocalFile() if isinstance(folder, QUrl) else folder
         output = Path(output_text).expanduser()
@@ -423,9 +480,71 @@ class QtIsoBridge(QObject):
         self.settingsChanged.emit()
         self.availabilityChanged.emit()
 
+    @Slot(QUrl, result=str)
+    def localPathForUrl(self, folder: QUrl) -> str:
+        return folder.toLocalFile()
+
+    @Slot(
+        str,
+        str,
+        str,
+        str,
+        str,
+        bool,
+        bool,
+        bool,
+        bool,
+        result=bool,
+    )
+    def applyBuildSettings(
+        self,
+        output_text: str,
+        iso_name: str,
+        volume_label: str,
+        profile: str,
+        backend: str,
+        auto_package: bool,
+        include_hidden: bool,
+        generate_hash: bool,
+        optimize_duplicates: bool,
+    ) -> bool:
+        """Atomically apply one Settings-dialog draft on the Qt UI thread."""
+        if self._is_dry_running or self._is_build_running:
+            return False
+
+        output = Path(output_text).expanduser()
+        if not output.exists() or not output.is_dir():
+            self._planning_error = "Selected output folder is not available."
+            self.commandChanged.emit()
+            return False
+        if profile not in PROFILES:
+            self._planning_error = "Selected build profile is not available."
+            self.commandChanged.emit()
+            return False
+        if backend not in self.backendOptions:
+            self._planning_error = "Selected ISO backend is not available."
+            self.commandChanged.emit()
+            return False
+
+        self._output_folder = str(output.resolve())
+        self._iso_name = iso_name
+        self._volume_label = volume_label
+        self._selected_profile = profile
+        self._selected_backend = backend
+        self._auto_package = auto_package
+        self._include_hidden = include_hidden
+        self._generate_hash = generate_hash
+        self._optimize_duplicates = optimize_duplicates
+        self._update_preferred_backend()
+        self._invalidate_command()
+        self.settingsChanged.emit()
+        self.backendsChanged.emit()
+        self.availabilityChanged.emit()
+        return True
+
     @Slot(str)
     def setVolumeLabel(self, value: str) -> None:
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         self._volume_label = value
         self._invalidate_command()
@@ -433,7 +552,7 @@ class QtIsoBridge(QObject):
 
     @Slot(str)
     def setIsoName(self, value: str) -> None:
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         self._iso_name = value
         self._invalidate_command()
@@ -441,7 +560,7 @@ class QtIsoBridge(QObject):
 
     @Slot(str)
     def setProfile(self, value: str) -> None:
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         if value not in PROFILES:
             return
@@ -453,7 +572,7 @@ class QtIsoBridge(QObject):
 
     @Slot(str)
     def setBackend(self, value: str) -> None:
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         if value not in self.backendOptions:
             return
@@ -465,7 +584,7 @@ class QtIsoBridge(QObject):
 
     @Slot(bool)
     def setIncludeHidden(self, value: bool) -> None:
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         self._include_hidden = value
         self._invalidate_command()
@@ -473,7 +592,7 @@ class QtIsoBridge(QObject):
 
     @Slot(bool)
     def setGenerateHash(self, value: bool) -> None:
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         self._generate_hash = value
         self._invalidate_command()
@@ -481,7 +600,7 @@ class QtIsoBridge(QObject):
 
     @Slot(bool)
     def setOptimizeDuplicates(self, value: bool) -> None:
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         self._optimize_duplicates = value
         self._invalidate_command()
@@ -489,7 +608,7 @@ class QtIsoBridge(QObject):
 
     @Slot(bool)
     def setAutoPackage(self, value: bool) -> None:
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         self._auto_package = value
         self._invalidate_command()
@@ -504,12 +623,18 @@ class QtIsoBridge(QObject):
         self._reset_dry_run_result()
 
     def _reset_dry_run_result(self) -> None:
+        self._execution_mode = "IDLE"
         self._build_outcome = "IDLE"
         self._build_status_text = "Ready for dry run"
         self._build_progress = 0.0
+        self._build_progress_indeterminate = False
         self._build_log_text = ""
         self._build_error = ""
         self._last_execution_output = ""
+        self._build_hash_path = ""
+        self._build_warning_pending = False
+        self._build_warning_text = ""
+        self._build_warning_context = None
         self.executionChanged.emit()
 
     def _update_preferred_backend(self) -> None:
@@ -522,7 +647,7 @@ class QtIsoBridge(QObject):
             return
         self._preferred_backend = self._selected_backend.split(" | ", 1)[0].strip()
 
-    def _snapshot_build_request(self) -> BuildRequest:
+    def _snapshot_build_request(self, *, dry_run: bool = True) -> BuildRequest:
         return BuildRequest(
             source_text=self._source_folder,
             output_text=self._output_folder,
@@ -535,7 +660,7 @@ class QtIsoBridge(QObject):
                 generate_hash=self._generate_hash,
                 optimize_duplicates=self._optimize_duplicates,
                 auto_package=self._auto_package,
-                dry_run=True,
+                dry_run=dry_run,
             ),
         )
 
@@ -549,7 +674,7 @@ class QtIsoBridge(QObject):
             self.commandChanged.emit()
             return
 
-        request = self._snapshot_build_request()
+        request = self._snapshot_build_request(dry_run=True)
         backends = list(self._backends)
         self._planning_generation += 1
         generation = self._planning_generation
@@ -644,12 +769,18 @@ class QtIsoBridge(QObject):
         self._execution_generation += 1
         generation = self._execution_generation
         self._is_dry_running = True
+        self._execution_mode = "DRY RUN"
         self._build_outcome = "RUNNING"
         self._build_status_text = "Preparing dry-run plan..."
         self._build_progress = 0.12
+        self._build_progress_indeterminate = False
         self._build_log_text = ""
         self._build_error = ""
         self._last_execution_output = ""
+        self._build_hash_path = ""
+        self._build_warning_pending = False
+        self._build_warning_text = ""
+        self._build_warning_context = None
         self.executionChanged.emit()
         self.availabilityChanged.emit()
 
@@ -743,9 +874,337 @@ class QtIsoBridge(QObject):
         self.availabilityChanged.emit()
 
     @Slot()
+    def startBuild(self) -> None:
+        """Start one verified, non-dry transactional build off the Qt UI thread."""
+        if not self.canStartBuild:
+            self._execution_mode = "BUILD"
+            self._build_outcome = "FAIL"
+            self._build_status_text = "Build unavailable"
+            self._build_progress = 0.0
+            self._build_progress_indeterminate = False
+            self._build_log_text = ""
+            self._build_error = (
+                "Select valid source/output folders, wait for scanning, "
+                "and ensure an ISO backend is available."
+            )
+            self._last_execution_output = ""
+            self._build_hash_path = ""
+            self.executionChanged.emit()
+            return
+
+        request = self._snapshot_build_request(dry_run=False)
+        backends = list(self._backends)
+        cancellation = BuildCancellation()
+        self._build_cancellation = cancellation
+        self._execution_generation += 1
+        generation = self._execution_generation
+        self._execution_mode = "BUILD"
+        self._is_build_running = True
+        self._build_outcome = "RUNNING"
+        self._build_status_text = "Preparing build plan..."
+        self._build_progress = 0.08
+        self._build_progress_indeterminate = False
+        self._build_log_text = ""
+        self._build_error = ""
+        self._last_execution_output = ""
+        self._build_hash_path = ""
+        self._build_warning_pending = False
+        self._build_warning_text = ""
+        self._build_warning_context = None
+        self.executionChanged.emit()
+        self.availabilityChanged.emit()
+
+        worker = threading.Thread(
+            target=self._build_worker,
+            args=(generation, request, backends, cancellation),
+            name=f"qt-real-build-{generation}",
+            daemon=True,
+        )
+        worker.start()
+
+    def _build_worker(
+        self,
+        generation: int,
+        request: BuildRequest,
+        backends: list[Backend],
+        cancellation: BuildCancellation,
+    ) -> None:
+        plan = None
+        logs: list[str] = []
+
+        def emit_log(message: str) -> None:
+            text = str(message)
+            logs.append(text)
+            self._buildLog.emit(generation, text)
+            status, progress, indeterminate = self._progress_from_log(text)
+            if status:
+                self._buildProgress.emit(
+                    generation,
+                    status,
+                    progress,
+                    indeterminate,
+                )
+
+        try:
+            plan = self._planner(request, backends)
+            if plan.options.dry_run:
+                raise RuntimeError("Qt real build produced a dry-run plan.")
+            if plan.scan.warnings:
+                decision_event = threading.Event()
+                decision = {"approved": False}
+                self._buildWarningRequested.emit(
+                    generation,
+                    list(plan.scan.warnings),
+                    decision_event,
+                    decision,
+                )
+                while not decision_event.wait(0.05):
+                    if cancellation.is_cancelled():
+                        decision_event.set()
+                if not decision["approved"]:
+                    emit_log("Build cancelled after scan warning review.")
+                    result = BuildExecutionResult(
+                        outcome="CANCELLED",
+                        output_iso=plan.output_iso,
+                        error="Build cancelled after scan warning review.",
+                    )
+                    self._buildFinished.emit(generation, result, "", logs)
+                    return
+            self._buildProgress.emit(
+                generation,
+                "Starting ISO backend...",
+                0.18,
+                True,
+            )
+            result = self._executor(plan, emit_log, cancellation)
+            self._buildFinished.emit(generation, result, "", logs)
+        except Exception as exc:
+            self._buildFinished.emit(generation, None, str(exc), logs)
+        finally:
+            if isinstance(plan, BuildPlan):
+                try:
+                    self._command_cleanup(plan.command)
+                except Exception:
+                    pass
+
+    @Slot(int, object, object, object)
+    def _apply_build_warning_request(
+        self,
+        generation: int,
+        warnings: object,
+        decision_event: object,
+        decision: object,
+    ) -> None:
+        if (
+            generation != self._execution_generation
+            or not self._is_build_running
+            or not isinstance(decision_event, threading.Event)
+            or not isinstance(decision, dict)
+        ):
+            if isinstance(decision_event, threading.Event):
+                decision_event.set()
+            return
+        cancellation = self._build_cancellation
+        if cancellation is not None and cancellation.is_cancelled():
+            decision_event.set()
+            return
+
+        warning_lines = [str(item) for item in warnings] if isinstance(warnings, list) else []
+        shown = warning_lines[:8]
+        if len(warning_lines) > 8:
+            shown.append(f"...and {len(warning_lines) - 8} more")
+        self._build_warning_text = "\n".join(f"• {line}" for line in shown)
+        self._build_warning_pending = True
+        self._build_warning_context = (decision_event, decision)
+        self._build_status_text = "Review scan warnings"
+        self._build_progress = 0.15
+        self._build_progress_indeterminate = False
+        self.executionChanged.emit()
+
+    @Slot()
+    def continueBuildAfterWarnings(self) -> None:
+        context = self._build_warning_context
+        if not self._build_warning_pending or context is None:
+            return
+        decision_event, decision = context
+        decision["approved"] = True
+        self._build_warning_pending = False
+        self._build_warning_context = None
+        self._build_status_text = "Starting ISO backend..."
+        self._build_progress_indeterminate = True
+        self.executionChanged.emit()
+        decision_event.set()
+
+    @Slot()
+    def rejectBuildWarnings(self) -> None:
+        context = self._build_warning_context
+        if context is None:
+            return
+        decision_event, decision = context
+        decision["approved"] = False
+        self._build_warning_pending = False
+        self._build_warning_context = None
+        if self._build_cancellation is not None:
+            self._build_cancellation.cancel()
+        self._build_status_text = "Cancelling build..."
+        self._build_progress_indeterminate = True
+        self.executionChanged.emit()
+        decision_event.set()
+
+    @staticmethod
+    def _progress_from_log(message: str) -> tuple[str, float, bool]:
+        percent_match = re.search(
+            r"(?<!\d)(100|\d{1,2})(?:\.\d+)?\s*%",
+            message,
+        )
+        if percent_match:
+            percent = int(percent_match.group(1))
+            return "Creating ISO...", percent / 100.0, False
+        if message == "Build started":
+            return "Build started", 0.20, False
+        if message.startswith("Storage preflight:"):
+            return "Storage verified", 0.24, False
+        if message == "Transactional execution command:":
+            return "Creating ISO...", 0.28, True
+        if message.startswith("ISO created:"):
+            return "ISO created", 0.88, False
+        if message == "Generating SHA256...":
+            return "Generating SHA256...", 0.92, True
+        if message.startswith("Hash saved:"):
+            return "SHA256 saved", 0.98, False
+        return "", 0.0, False
+
+    @Slot(int, str, float, bool)
+    def _apply_build_progress(
+        self,
+        generation: int,
+        status_text: str,
+        progress: float,
+        indeterminate: bool,
+    ) -> None:
+        if generation != self._execution_generation or not self._is_build_running:
+            return
+        self._build_status_text = status_text
+        self._build_progress = min(1.0, max(0.0, progress))
+        self._build_progress_indeterminate = indeterminate
+        self.executionChanged.emit()
+
+    @Slot(int, str)
+    def _apply_build_log(self, generation: int, message: str) -> None:
+        if generation != self._execution_generation:
+            return
+        if self._build_log_text:
+            self._build_log_text += "\n"
+        self._build_log_text += message
+        self.executionChanged.emit()
+
+    @Slot(int, object, str, object)
+    def _apply_build_result(
+        self,
+        generation: int,
+        result: object,
+        error: str,
+        logs: object,
+    ) -> None:
+        if generation != self._execution_generation:
+            return
+
+        cancellation = self._build_cancellation
+        self._is_build_running = False
+        self._build_cancellation = None
+        self._build_progress_indeterminate = False
+        self._build_warning_pending = False
+        self._build_warning_text = ""
+        self._build_warning_context = None
+        log_lines = [str(line) for line in logs] if isinstance(logs, list) else []
+        self._build_log_text = "\n".join(log_lines)
+        if (
+            cancellation is not None
+            and cancellation.is_cancelled()
+            and "Cancellation requested by user." not in self._build_log_text
+        ):
+            if self._build_log_text:
+                self._build_log_text += "\n"
+            self._build_log_text += "Cancellation requested by user."
+
+        if error:
+            cancelled = cancellation is not None and cancellation.is_cancelled()
+            self._build_outcome = "CANCELLED" if cancelled else "FAIL"
+            self._build_status_text = (
+                "Build cancelled" if cancelled else "Build failed"
+            )
+            self._build_progress = 0.0
+            self._build_error = (
+                "Build cancelled by user." if cancelled else error
+            )
+            self._last_execution_output = ""
+            self._build_hash_path = ""
+        elif isinstance(result, BuildExecutionResult):
+            self._build_outcome = result.outcome
+            self._last_execution_output = str(result.output_iso)
+            self._build_hash_path = (
+                str(result.hash_path) if result.hash_path is not None else ""
+            )
+            self._build_error = result.error or ""
+            if result.outcome == "PASS":
+                self._build_status_text = "Build complete"
+                self._build_progress = 1.0
+            elif result.outcome == "CANCELLED":
+                self._build_status_text = "Build cancelled"
+                self._build_progress = 0.0
+            else:
+                self._build_status_text = "Build failed"
+                self._build_progress = 0.0
+        else:
+            self._build_outcome = "FAIL"
+            self._build_status_text = "Build failed"
+            self._build_progress = 0.0
+            self._build_error = "Build execution returned an invalid result."
+            self._last_execution_output = ""
+            self._build_hash_path = ""
+
+        self.executionChanged.emit()
+        self.availabilityChanged.emit()
+        if self._close_requested:
+            self.safeToClose.emit()
+
+    @Slot()
+    def cancelBuild(self) -> None:
+        if not self._is_build_running or self._build_cancellation is None:
+            return
+        self._build_cancellation.cancel()
+        context = self._build_warning_context
+        if context is not None:
+            decision_event, decision = context
+            decision["approved"] = False
+            self._build_warning_pending = False
+            self._build_warning_context = None
+            decision_event.set()
+        self._build_status_text = "Cancelling build..."
+        self._build_progress_indeterminate = True
+        if self._build_log_text:
+            self._build_log_text += "\n"
+        self._build_log_text += "Cancellation requested by user."
+        self.executionChanged.emit()
+        QTimer.singleShot(3000, self._force_cancel_if_running)
+
+    @Slot()
+    def requestCloseAfterCancel(self) -> None:
+        if not self._is_build_running:
+            self.safeToClose.emit()
+            return
+        self._close_requested = True
+        self.cancelBuild()
+
+    @Slot()
+    def _force_cancel_if_running(self) -> None:
+        if self._is_build_running and self._build_cancellation is not None:
+            self._build_cancellation.cancel(force=True)
+
+    @Slot()
     def refreshBackends(self) -> None:
         """Refresh the read-only backend snapshot shown by the QML shell."""
-        if self._is_dry_running:
+        if self._is_dry_running or self._is_build_running:
             return
         try:
             backends = list(self._detector())

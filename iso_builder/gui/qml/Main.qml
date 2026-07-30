@@ -32,6 +32,14 @@ ApplicationWindow {
     readonly property color cyan: "#32c6ea"
     readonly property color green: "#43b65d"
     readonly property color orange: "#f18a35"
+    property bool closeApproved: false
+
+    onClosing: function(close) {
+        if (bridge.isBuildRunning && !window.closeApproved) {
+            close.accepted = false
+            closeBuildDialog.open()
+        }
+    }
 
     function toggleMaximized() {
         if (window.visibility === Window.Maximized) {
@@ -50,7 +58,10 @@ ApplicationWindow {
     FolderDialog {
         id: outputFolderDialog
         title: "Select ISO output folder"
-        onAccepted: bridge.selectOutputFolder(selectedFolder)
+        onAccepted: {
+            buildSettingsDialog.draftOutputFolder =
+                    bridge.localPathForUrl(selectedFolder)
+        }
     }
 
     Connections {
@@ -65,16 +76,50 @@ ApplicationWindow {
         }
 
         function onExecutionChanged() {
-            if (!bridge.isDryRunning
+            if (bridge.executionMode === "DRY RUN"
+                    && !bridge.isDryRunning
                     && bridge.buildOutcome !== "IDLE"
                     && bridge.buildOutcome !== "RUNNING") {
                 dryRunDialog.open()
             }
+            if (bridge.executionMode === "BUILD"
+                    && !bridge.isBuildRunning
+                    && bridge.buildOutcome === "FAIL"
+                    && !buildLogDialog.visible) {
+                buildLogDialog.open()
+            }
+            if (bridge.buildWarningPending && !buildWarningDialog.visible) {
+                buildWarningDialog.open()
+            } else if (!bridge.buildWarningPending && buildWarningDialog.visible) {
+                buildWarningDialog.close()
+            }
+        }
+
+        function onSafeToClose() {
+            window.closeApproved = true
+            window.close()
         }
     }
 
     Dialog {
         id: buildSettingsDialog
+        property string draftOutputFolder: ""
+
+        function loadDraft() {
+            draftOutputFolder = bridge.outputFolder
+            isoNameField.text = bridge.isoName
+            volumeLabelField.text = bridge.volumeLabel
+            profileCombo.currentIndex = Math.max(
+                        0, bridge.profileOptions.indexOf(bridge.selectedProfile))
+            backendCombo.currentIndex = Math.max(
+                        0, bridge.backendOptions.indexOf(bridge.selectedBackend))
+            autoPackageCheck.checked = bridge.autoPackage
+            includeHiddenCheck.checked = bridge.includeHidden
+            generateHashCheck.checked = bridge.generateHash
+            optimizeCheck.checked = bridge.optimizeDuplicates
+        }
+
+        onOpened: loadDraft()
         width: Math.min(690, window.width - 80)
         height: Math.min(650, window.height - 70)
         x: Math.round((window.width - width) / 2)
@@ -163,8 +208,8 @@ ApplicationWindow {
                         anchors.fill: parent
                         anchors.leftMargin: 13
                         anchors.rightMargin: 13
-                        text: bridge.outputFolder.length > 0
-                              ? bridge.outputFolder
+                        text: buildSettingsDialog.draftOutputFolder.length > 0
+                              ? buildSettingsDialog.draftOutputFolder
                               : "Choose output folder"
                         color: window.muted
                         font.pixelSize: 12
@@ -178,7 +223,7 @@ ApplicationWindow {
                     Layout.preferredWidth: 92
                     Layout.preferredHeight: 42
                     text: "Browse"
-                    enabled: !bridge.isDryRunning
+                    enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                     onClicked: outputFolderDialog.open()
                     contentItem: Text {
                         text: outputBrowseButton.text
@@ -216,10 +261,11 @@ ApplicationWindow {
                     id: isoNameField
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
-                    text: bridge.isoName
-                    enabled: !bridge.autoPackage && !bridge.isDryRunning
+                    text: ""
+                    enabled: !autoPackageCheck.checked
+                             && !bridge.isDryRunning
+                             && !bridge.isBuildRunning
                     selectByMouse: true
-                    onEditingFinished: bridge.setIsoName(text)
                     color: window.ink
                     placeholderTextColor: window.muted
                     background: Rectangle {
@@ -235,10 +281,11 @@ ApplicationWindow {
                     id: volumeLabelField
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
-                    text: bridge.volumeLabel
-                    enabled: !bridge.autoPackage && !bridge.isDryRunning
+                    text: ""
+                    enabled: !autoPackageCheck.checked
+                             && !bridge.isDryRunning
+                             && !bridge.isBuildRunning
                     selectByMouse: true
-                    onEditingFinished: bridge.setVolumeLabel(text)
                     color: window.ink
                     background: Rectangle {
                         radius: 12
@@ -265,10 +312,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
                     model: bridge.profileOptions
-                    enabled: !bridge.isDryRunning
-                    currentIndex: Math.max(0, bridge.profileOptions.indexOf(
-                                               bridge.selectedProfile))
-                    onActivated: bridge.setProfile(currentText)
+                    enabled: !bridge.isDryRunning && !bridge.isBuildRunning
+                    currentIndex: 0
                 }
 
                 ComboBox {
@@ -276,10 +321,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
                     model: bridge.backendOptions
-                    enabled: !bridge.isDryRunning
-                    currentIndex: Math.max(0, bridge.backendOptions.indexOf(
-                                               bridge.selectedBackend))
-                    onActivated: bridge.setBackend(currentText)
+                    enabled: !bridge.isDryRunning && !bridge.isBuildRunning
+                    currentIndex: 0
                 }
             }
 
@@ -290,28 +333,36 @@ ApplicationWindow {
                 rowSpacing: 5
 
                 CheckBox {
+                    id: autoPackageCheck
                     text: "Auto package folder"
-                    checked: bridge.autoPackage
-                    enabled: !bridge.isDryRunning
-                    onToggled: bridge.setAutoPackage(checked)
+                    checked: false
+                    palette.windowText: window.ink
+                    palette.text: window.ink
+                    enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
                 CheckBox {
+                    id: includeHiddenCheck
                     text: "Include hidden files"
-                    checked: bridge.includeHidden
-                    enabled: !bridge.isDryRunning
-                    onToggled: bridge.setIncludeHidden(checked)
+                    checked: false
+                    palette.windowText: window.ink
+                    palette.text: window.ink
+                    enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
                 CheckBox {
+                    id: generateHashCheck
                     text: "Generate SHA256"
-                    checked: bridge.generateHash
-                    enabled: !bridge.isDryRunning
-                    onToggled: bridge.setGenerateHash(checked)
+                    checked: false
+                    palette.windowText: window.ink
+                    palette.text: window.ink
+                    enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
                 CheckBox {
+                    id: optimizeCheck
                     text: "Optimize duplicates"
-                    checked: bridge.optimizeDuplicates
-                    enabled: !bridge.isDryRunning
-                    onToggled: bridge.setOptimizeDuplicates(checked)
+                    checked: false
+                    palette.windowText: window.ink
+                    palette.text: window.ink
+                    enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
             }
 
@@ -330,29 +381,33 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 spacing: 12
 
-                Button {
-                    Layout.preferredWidth: 110
+                GradientButton {
+                    Layout.preferredWidth: 150
                     Layout.preferredHeight: 46
-                    text: "Close"
+                    text: "Cancel"
+                    startColor: "#ff8b5c"
+                    endColor: "#ef4f73"
                     onClicked: buildSettingsDialog.close()
                 }
 
                 GradientButton {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 46
-                    text: bridge.isPlanning ? "Preparing command..." : "Show Command"
-                    enabled: bridge.canShowCommand
-                    onClicked: bridge.showCommand()
-                }
-
-                GradientButton {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 46
-                    text: bridge.isDryRunning ? "Running..." : "Run Dry Test"
-                    enabled: bridge.canRunDryRun
+                    text: "Save Settings"
+                    enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                     onClicked: {
-                        buildSettingsDialog.close()
-                        bridge.runDryRun()
+                        if (bridge.applyBuildSettings(
+                                    buildSettingsDialog.draftOutputFolder,
+                                    isoNameField.text,
+                                    volumeLabelField.text,
+                                    profileCombo.currentText,
+                                    backendCombo.currentText,
+                                    autoPackageCheck.checked,
+                                    includeHiddenCheck.checked,
+                                    generateHashCheck.checked,
+                                    optimizeCheck.checked)) {
+                            buildSettingsDialog.close()
+                        }
                     }
                 }
             }
@@ -545,6 +600,317 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: realBuildConfirmDialog
+        width: Math.min(600, window.width - 70)
+        height: 330
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+
+        background: Rectangle {
+            radius: 24
+            color: window.darkMode ? "#20263c" : "#f8f8fd"
+            border.width: 1
+            border.color: window.darkMode ? "#505a74" : "#ffffff"
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 24
+            spacing: 14
+
+            Text {
+                text: "Create ISO"
+                color: window.ink
+                font.pixelSize: 22
+                font.weight: Font.DemiBold
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "This is a real build. The verified backend will create an ISO and optional SHA256 file."
+                color: window.muted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 58
+                radius: 14
+                color: window.darkMode ? "#292f46" : "#ffffff"
+                border.width: 1
+                border.color: window.darkMode ? "#4b536b" : "#dcdeea"
+                Text {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    text: bridge.outputPreview
+                    color: window.ink
+                    font.pixelSize: 12
+                    elide: Text.ElideMiddle
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Existing output files are rejected; they are never silently overwritten."
+                color: window.orange
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            Item { Layout.fillHeight: true }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Button {
+                    Layout.preferredWidth: 120
+                    Layout.preferredHeight: 46
+                    text: "Cancel"
+                    onClicked: realBuildConfirmDialog.close()
+                }
+                GradientButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 46
+                    text: "Start Real Build"
+                    enabled: bridge.canStartBuild
+                    onClicked: {
+                        realBuildConfirmDialog.close()
+                        bridge.startBuild()
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: buildLogDialog
+        width: Math.min(820, window.width - 70)
+        height: Math.min(560, window.height - 70)
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        modal: false
+        focus: true
+        padding: 0
+        closePolicy: Popup.CloseOnEscape
+
+        background: Rectangle {
+            radius: 24
+            color: window.darkMode ? "#20263c" : "#f8f8fd"
+            border.width: 1
+            border.color: window.darkMode ? "#505a74" : "#ffffff"
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 24
+            spacing: 12
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    Text {
+                        text: bridge.isBuildRunning
+                              ? "Creating ISO"
+                              : (bridge.buildOutcome === "PASS"
+                                 ? "ISO Build Complete"
+                                 : (bridge.buildOutcome === "CANCELLED"
+                                    ? "Build Cancelled"
+                                    : "ISO Build Failed"))
+                        color: window.ink
+                        font.pixelSize: 22
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        text: bridge.buildStatusText
+                        color: bridge.buildOutcome === "FAIL"
+                               ? "#ef5965"
+                               : window.muted
+                        font.pixelSize: 12
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: bridge.lastExecutionOutput.length > 0
+                text: "Output: " + bridge.lastExecutionOutput
+                color: window.muted
+                font.pixelSize: 11
+                elide: Text.ElideMiddle
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: bridge.buildHashPath.length > 0
+                text: "SHA256: " + bridge.buildHashPath
+                color: window.green
+                font.pixelSize: 11
+                elide: Text.ElideMiddle
+            }
+
+            TextArea {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                text: bridge.buildLogText.length > 0
+                      ? bridge.buildLogText
+                      : bridge.buildError
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.WrapAnywhere
+                color: window.ink
+                background: Rectangle {
+                    radius: 14
+                    color: window.darkMode ? "#161b2e" : "#ffffff"
+                    border.width: 1
+                    border.color: window.darkMode ? "#454e68" : "#dcdeea"
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                GradientButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 46
+                    text: "Close Log"
+                    onClicked: buildLogDialog.close()
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: closeBuildDialog
+        width: Math.min(560, window.width - 70)
+        height: 260
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.NoAutoClose
+
+        background: Rectangle {
+            radius: 24
+            color: window.darkMode ? "#20263c" : "#f8f8fd"
+            border.width: 1
+            border.color: window.darkMode ? "#505a74" : "#ffffff"
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 24
+            spacing: 14
+            Text {
+                text: "Build in progress"
+                color: window.ink
+                font.pixelSize: 22
+                font.weight: Font.DemiBold
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Cancel the active backend, clean temporary output, and close safely?"
+                color: window.muted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Item { Layout.fillHeight: true }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Button {
+                    Layout.preferredWidth: 140
+                    Layout.preferredHeight: 46
+                    text: "Keep Building"
+                    onClicked: closeBuildDialog.close()
+                }
+                GradientButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 46
+                    text: "Cancel and Close"
+                    onClicked: {
+                        closeBuildDialog.close()
+                        bridge.requestCloseAfterCancel()
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: buildWarningDialog
+        width: Math.min(650, window.width - 70)
+        height: Math.min(470, window.height - 70)
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        modal: true
+        focus: true
+        padding: 0
+        closePolicy: Popup.NoAutoClose
+
+        background: Rectangle {
+            radius: 24
+            color: window.darkMode ? "#20263c" : "#f8f8fd"
+            border.width: 1
+            border.color: window.darkMode ? "#505a74" : "#ffffff"
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 24
+            spacing: 14
+            Text {
+                text: "Scan warnings found"
+                color: window.ink
+                font.pixelSize: 22
+                font.weight: Font.DemiBold
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Review these source warnings before starting the ISO backend."
+                color: window.muted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            TextArea {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                text: bridge.buildWarningText
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.WordWrap
+                color: window.orange
+                background: Rectangle {
+                    radius: 14
+                    color: window.darkMode ? "#161b2e" : "#ffffff"
+                    border.width: 1
+                    border.color: window.darkMode ? "#454e68" : "#dcdeea"
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Button {
+                    Layout.preferredWidth: 150
+                    Layout.preferredHeight: 46
+                    text: "Cancel Build"
+                    onClicked: bridge.rejectBuildWarnings()
+                }
+                GradientButton {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 46
+                    text: "Continue Build"
+                    onClicked: bridge.continueBuildAfterWarnings()
+                }
+            }
+        }
+    }
+
     Rectangle {
         id: shell
         anchors.fill: parent
@@ -629,55 +995,52 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: "Home"
                         iconSource: Qt.resolvedUrl("assets/icons/home.svg")
-                        selected: true
                     }
 
                     NavButton {
                         Layout.fillWidth: true
                         text: "Create ISO"
                         iconSource: Qt.resolvedUrl("assets/icons/create.svg")
-                        enabled: false
-                        opacity: 0.78
+                        onClicked: {
+                            if (bridge.canStartBuild) {
+                                realBuildConfirmDialog.open()
+                            }
+                        }
                     }
 
                     NavButton {
                         Layout.fillWidth: true
                         text: "Verify ISO"
                         iconSource: Qt.resolvedUrl("assets/icons/verify.svg")
-                        enabled: false
-                        opacity: 0.78
                     }
 
                     NavButton {
                         Layout.fillWidth: true
                         text: "History"
                         iconSource: Qt.resolvedUrl("assets/icons/history.svg")
-                        enabled: false
-                        opacity: 0.78
                     }
 
                     NavButton {
                         Layout.fillWidth: true
                         text: "Settings"
                         iconSource: Qt.resolvedUrl("assets/icons/settings.svg")
-                        enabled: !bridge.isDryRunning
-                        onClicked: buildSettingsDialog.open()
+                        onClicked: {
+                            if (!bridge.isDryRunning && !bridge.isBuildRunning) {
+                                buildSettingsDialog.open()
+                            }
+                        }
                     }
 
                     NavButton {
                         Layout.fillWidth: true
                         text: "Tools"
                         iconSource: Qt.resolvedUrl("assets/icons/tools.svg")
-                        enabled: false
-                        opacity: 0.78
                     }
 
                     NavButton {
                         Layout.fillWidth: true
                         text: "Help"
                         iconSource: Qt.resolvedUrl("assets/icons/help.svg")
-                        enabled: false
-                        opacity: 0.78
                     }
 
                     Item { Layout.fillHeight: true }
@@ -860,15 +1223,30 @@ ApplicationWindow {
 
                     Repeater {
                         model: [
-                            { text: "—", action: "minimize" },
-                            { text: "□", action: "maximize" },
-                            { text: "×", action: "close" }
+                            {
+                                text: "\u2212",
+                                action: "minimize",
+                                baseColor: "#438cf2",
+                                hoverColor: "#66a6fb"
+                            },
+                            {
+                                text: "\u25a1",
+                                action: "maximize",
+                                baseColor: "#7655eb",
+                                hoverColor: "#9479f5"
+                            },
+                            {
+                                text: "\u00d7",
+                                action: "close",
+                                baseColor: "#ed5262",
+                                hoverColor: "#ff6d79"
+                            }
                         ]
 
                         delegate: Button {
                             required property var modelData
-                            width: 38
-                            height: 30
+                            width: 34
+                            height: 34
                             hoverEnabled: true
                             text: modelData.text
                             onClicked: {
@@ -882,18 +1260,19 @@ ApplicationWindow {
                             }
                             contentItem: Text {
                                 text: parent.text
-                                color: window.ink
-                                font.pixelSize: 17
+                                color: "white"
+                                font.pixelSize: 15
+                                font.weight: Font.DemiBold
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
                             background: Rectangle {
                                 radius: 9
                                 color: parent.hovered
-                                       ? (modelData.action === "close"
-                                          ? "#ef5260"
-                                          : (window.darkMode ? "#34405f" : "#e9e7f3"))
-                                       : "transparent"
+                                       ? modelData.hoverColor
+                                       : modelData.baseColor
+                                border.width: 1
+                                border.color: "#55ffffff"
                             }
                         }
                     }
@@ -1087,6 +1466,7 @@ ApplicationWindow {
                                             Layout.preferredHeight: 32
                                             text: "Browse"
                                             enabled: !bridge.isDryRunning
+                                                     && !bridge.isBuildRunning
                                             onClicked: sourceFolderDialog.open()
                                             contentItem: Text {
                                                 text: sourceBrowseButton.text
@@ -1109,6 +1489,7 @@ ApplicationWindow {
                                     DropArea {
                                         anchors.fill: parent
                                         enabled: !bridge.isDryRunning
+                                                 && !bridge.isBuildRunning
                                         onDropped: function(drop) {
                                             if (drop.hasUrls && drop.urls.length > 0) {
                                                 bridge.selectSourceFolder(drop.urls[0])
@@ -1177,14 +1558,56 @@ ApplicationWindow {
 
                                 Item { Layout.fillHeight: true }
 
-                                GradientButton {
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 44
-                                    text: bridge.isDryRunning
-                                          ? "Running safe dry test..."
-                                          : "Run Dry Test"
-                                    enabled: bridge.canRunDryRun
-                                    onClicked: bridge.runDryRun()
+                                    spacing: 10
+
+                                    GradientButton {
+                                        Layout.preferredWidth: 130
+                                        Layout.preferredHeight: 44
+                                        text: bridge.isPlanning
+                                              ? "Preparing..."
+                                              : "Show Command"
+                                        enabled: bridge.canShowCommand
+                                        startColor: "#7857f3"
+                                        endColor: "#3d8df6"
+                                        onClicked: bridge.showCommand()
+                                    }
+
+                                    GradientButton {
+                                        Layout.preferredWidth: 110
+                                        Layout.preferredHeight: 44
+                                        text: bridge.isDryRunning
+                                              ? "Running..."
+                                              : "Dry Test"
+                                        enabled: bridge.canRunDryRun
+                                        startColor: "#32bfe8"
+                                        endColor: "#7358ee"
+                                        onClicked: bridge.runDryRun()
+                                    }
+
+                                    GradientButton {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 44
+                                        text: bridge.isBuildRunning
+                                              ? "Cancel Build"
+                                              : "Create ISO"
+                                        enabled: bridge.isBuildRunning
+                                                 || bridge.canStartBuild
+                                        startColor: bridge.isBuildRunning
+                                                    ? "#ef7859"
+                                                    : "#8155f5"
+                                        endColor: bridge.isBuildRunning
+                                                  ? "#e44767"
+                                                  : "#398cf6"
+                                        onClicked: {
+                                            if (bridge.isBuildRunning) {
+                                                bridge.cancelBuild()
+                                            } else {
+                                                realBuildConfirmDialog.open()
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1218,6 +1641,7 @@ ApplicationWindow {
                                         width: 34
                                         height: 34
                                         enabled: !bridge.isDryRunning
+                                                 && !bridge.isBuildRunning
                                         onClicked: bridge.refreshBackends()
                                         contentItem: Text {
                                             text: parent.text
@@ -1346,6 +1770,27 @@ ApplicationWindow {
                                         font.pixelSize: 15
                                         font.weight: Font.DemiBold
                                     }
+                                    Button {
+                                        id: viewBuildLogButton
+                                        visible: bridge.executionMode === "BUILD"
+                                                 && bridge.buildLogText.length > 0
+                                        text: "View log"
+                                        onClicked: buildLogDialog.open()
+                                        contentItem: Text {
+                                            text: viewBuildLogButton.text
+                                            color: window.purple
+                                            font.pixelSize: 11
+                                            font.weight: Font.DemiBold
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                        background: Rectangle {
+                                            radius: 9
+                                            color: viewBuildLogButton.hovered
+                                                   ? "#1f7656ed"
+                                                   : "transparent"
+                                        }
+                                    }
                                     Text {
                                         text: bridge.buildStatusText
                                         color: window.muted
@@ -1361,13 +1806,16 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 13
                                         value: bridge.buildProgress
+                                        indeterminate: bridge.buildProgressIndeterminate
                                         trackColor: window.darkMode
                                                     ? "#30364d"
                                                     : "#e8e8f1"
                                     }
 
                                     Text {
-                                        text: bridge.buildProgressPercent + "%"
+                                        text: bridge.buildProgressIndeterminate
+                                              ? "Working"
+                                              : bridge.buildProgressPercent + "%"
                                         color: window.ink
                                         font.pixelSize: 13
                                         font.weight: Font.DemiBold
@@ -1405,7 +1853,10 @@ ApplicationWindow {
                                     Text {
                                         Layout.fillWidth: true
                                         text: bridge.lastExecutionOutput.length > 0
-                                              ? bridge.lastExecutionOutput + " (dry run)"
+                                              ? bridge.lastExecutionOutput
+                                                + (bridge.executionMode === "DRY RUN"
+                                                   ? " (dry run)"
+                                                   : "")
                                               : (bridge.sourceFolder.length > 0
                                                  ? bridge.outputPreview
                                                  : "No ISO output yet")

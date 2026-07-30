@@ -251,8 +251,8 @@ class QtDryRunQmlContractTests(unittest.TestCase):
         self.assertIn("bridge.buildProgress", qml)
         self.assertIn("bridge.buildLogText", qml)
         self.assertIn("dryRunDialog", qml)
-        self.assertIn('"Run Dry Test"', qml)
-        self.assertNotIn("bridge.startBuild", qml)
+        self.assertIn('"Dry Test"', qml)
+        self.assertIn("bridge.startBuild()", qml)
         self.assertNotIn("execute_build_plan", qml)
 
 

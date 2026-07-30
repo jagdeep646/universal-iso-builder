@@ -191,9 +191,65 @@ class QtCommandPlanningTests(unittest.TestCase):
         self.assertEqual(bridge.commandText, "")
         self.assertIn("controlled planning failure", bridge.planningError)
 
+    def test_settings_draft_applies_atomically_only_after_save(self) -> None:
+        from iso_builder.gui.qt_bridge import QtIsoBridge
+
+        backend = make_backend()
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "Setup"
+            output = root / "Output"
+            source.mkdir()
+            output.mkdir()
+            bridge = QtIsoBridge(
+                detector=lambda: [backend],
+                scanner=lambda *_args: ScanResult(files=1),
+            )
+            bridge.refreshBackends()
+            bridge.selectSourceFolder(QUrl.fromLocalFile(str(source)))
+            self.wait_until(lambda: not bridge.isScanning)
+
+            original_output = bridge.outputFolder
+            self.assertFalse(
+                bridge.applyBuildSettings(
+                    str(root / "Missing"),
+                    "Draft.iso",
+                    "DRAFT",
+                    bridge.selectedProfile,
+                    bridge.selectedBackend,
+                    False,
+                    False,
+                    False,
+                    True,
+                )
+            )
+            self.assertEqual(bridge.outputFolder, original_output)
+
+            self.assertTrue(
+                bridge.applyBuildSettings(
+                    str(output),
+                    "Saved.iso",
+                    "SAVED",
+                    PROFILE_UDF_ONLY,
+                    bridge.backendOptions[1],
+                    False,
+                    False,
+                    False,
+                    True,
+                )
+            )
+            self.assertEqual(bridge.outputFolder, str(output.resolve()))
+            self.assertEqual(bridge.isoName, "Saved.iso")
+            self.assertEqual(bridge.volumeLabel, "SAVED")
+            self.assertEqual(bridge.selectedProfile, PROFILE_UDF_ONLY)
+            self.assertFalse(bridge.autoPackage)
+            self.assertFalse(bridge.includeHidden)
+            self.assertFalse(bridge.generateHash)
+            self.assertTrue(bridge.optimizeDuplicates)
+
 
 class QtCommandQmlContractTests(unittest.TestCase):
-    def test_qml_exposes_settings_and_command_without_build_execution(self) -> None:
+    def test_qml_exposes_settings_command_and_guarded_build_entrypoint(self) -> None:
         root = Path(__file__).resolve().parents[1]
         qml = (
             root / "iso_builder" / "gui" / "qml" / "Main.qml"
@@ -203,13 +259,19 @@ class QtCommandQmlContractTests(unittest.TestCase):
         self.assertIn("outputFolderDialog", qml)
         self.assertIn("bridge.profileOptions", qml)
         self.assertIn("bridge.backendOptions", qml)
-        self.assertIn("bridge.setAutoPackage", qml)
-        self.assertIn("bridge.setIncludeHidden", qml)
-        self.assertIn("bridge.setGenerateHash", qml)
-        self.assertIn("bridge.setOptimizeDuplicates", qml)
+        self.assertIn("bridge.applyBuildSettings(", qml)
+        self.assertIn('text: "Save Settings"', qml)
+        settings_section = qml[
+            qml.index("id: buildSettingsDialog"):
+            qml.index("id: commandDialog")
+        ]
+        self.assertNotIn("bridge.showCommand()", settings_section)
+        self.assertNotIn("bridge.runDryRun()", settings_section)
+        self.assertNotIn("bridge.startBuild()", settings_section)
         self.assertIn("bridge.showCommand()", qml)
         self.assertIn("bridge.commandText", qml)
-        self.assertNotIn("bridge.startBuild", qml)
+        self.assertIn("bridge.startBuild()", qml)
+        self.assertIn("realBuildConfirmDialog", qml)
 
 
 if __name__ == "__main__":
