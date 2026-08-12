@@ -22,6 +22,8 @@ dist-onefile/
 dist-qt/
 dist-qt-onefile/
 *.spec
+!packaging/
+!packaging/*.spec
 
 # Generated ISO packages and hashes
 *.iso

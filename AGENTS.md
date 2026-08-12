@@ -68,14 +68,19 @@ Tests, docs, and configuration:
 - `README.md` and `docs/TESTING_GUIDE.md`: overview and manual platform procedures.
 - `pyproject.toml` and `uv.lock`: pinned uv environment.
 - `.pre-commit-config.yaml`: file checks, Ruff, Gitleaks, lock check, and pre-push tests.
-- `build_qt_exe.ps1` and `build_qt_onefile_optional.ps1`: Qt Windows packaging.
+- `build_portable_windows.ps1` and `packaging/windows-portable.spec`: recommended
+  portable Qt Windows folder/ZIP packaging and verification.
+- `build_portable_macos.sh` and `packaging/macos-portable.spec`: target-native macOS
+  `.app`/ZIP packaging; runtime remains `NOT VERIFIED` until run on macOS.
+- `build_qt_exe.ps1` and `build_qt_onefile_optional.ps1`: older Qt Windows packaging.
 - `build_exe.ps1`, `build_exe.bat`, and `build_onefile_optional.bat`: legacy builds.
 - `windows_version_info.txt`: Windows executable metadata.
 - `check_iso_backend.bat`: Windows backend diagnostic.
 
 Generated/local-only paths include `.venv/`, `build/`, `dist/`, `dist-onefile/`,
-`dist-qt/`, `dist-qt-onefile/`, Python/tool caches, ISO files, checksums, specs, logs, and
-temporary files. They are ignored and must not be edited or committed as source.
+`dist-qt/`, `dist-qt-onefile/`, Python/tool caches, ISO files, checksums, generated specs,
+logs, and temporary files. They are ignored and must not be edited or committed as
+source. The reviewed specs under `packaging/` are intentional tracked source files.
 
 No `.github` CI configuration was found at the last inspection. Other hosted CI is
 `NOT VERIFIED`.
@@ -136,13 +141,25 @@ Tkinter. Do not silently redirect compatibility paths.
 Authorized Qt packaging on Windows:
 
 ```powershell
+& '.\build_portable_windows.ps1'
 & '.\build_qt_exe.ps1'
 & '.\build_qt_onefile_optional.ps1'
 ```
 
-These scripts can install pinned PyInstaller and regenerate `dist-qt/` or
-`dist-qt-onefile/`. Run them only when packaging and environment/network changes are
-explicitly authorized. Keep legacy builds and output directories separate.
+The portable script requires the locked `.venv` and does not install dependencies.
+Older scripts can install pinned PyInstaller and regenerate `dist-qt/` or
+`dist-qt-onefile/`. Run packaging only when artifact regeneration is explicitly
+authorized. Keep legacy builds and output directories separate.
+
+Target-native macOS packaging (macOS only):
+
+```bash
+./build_portable_macos.sh arm64
+./build_portable_macos.sh x86_64
+```
+
+The active Python architecture must match the requested target. Do not claim a
+universal2 build or cross-build macOS from Windows.
 
 ## 7. Verification Commands
 

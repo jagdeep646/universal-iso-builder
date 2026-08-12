@@ -291,42 +291,95 @@ uv run pre-commit run --all-files
 Automated checks do not replace a real backend ISO build or manual GUI verification.
 Report only commands actually run.
 
-## Windows EXE Builds
+## Portable Desktop Builds
 
-Recommended Qt onedir build:
+Portable builds include Python, PySide6, Qt plugins, QML, and SVG assets. The target PC
+does not need Python, uv, pip, PySide6, or PyInstaller. ISO backend requirements remain:
+Windows can use built-in PowerShell/IMAPI, while `oscdimg` remains an optional Windows
+ADK tool and is not redistributed by this project.
 
-```powershell
-& '.\build_qt_exe.ps1'
-```
+### Windows portable folder and ZIP
 
-Output:
-
-```text
-dist-qt/Universal ISO Builder/
-├── Universal ISO Builder.exe
-└── _internal/
-```
-
-Copy the complete folder. Moving only the onedir EXE causes a missing Python DLL error.
-
-Optional standalone onefile build:
+From a locked development environment:
 
 ```powershell
-& '.\build_qt_onefile_optional.ps1'
+uv sync --locked --all-groups
+& '.\build_portable_windows.ps1'
 ```
 
-Output:
+On a Windows x64 build machine the exact outputs are:
 
 ```text
-dist-qt-onefile/Universal ISO Builder.exe
+dist/Universal ISO Builder-Windows-x86_64/
+|-- Universal ISO Builder.exe
+`-- _internal/
+dist/Universal ISO Builder-Windows-x86_64.zip
+dist/Universal ISO Builder-Windows-x86_64.zip.sha256.txt
 ```
 
-Onefile can be moved alone, but it is larger and starts more slowly because it extracts
-Qt/Python files to a temporary directory. The current personal build is intentionally
-unsigned. Do not add antivirus or SmartScreen bypass behavior.
+The script loads the source GUI offscreen, builds the onedir package, checks its Python
+runtime, Qt plugins, QML assets, and Tkinter exclusion, launches the packaged GUI in
+smoke-test mode, creates the ZIP, extracts it to a fresh verification directory, launches
+the extracted copy, and writes a SHA256 checksum.
 
-macOS packaging, signing, and notarization are **NOT VERIFIED**. Follow the experimental
-steps in `docs/TESTING_GUIDE.md`; do not present them as a release build.
+For another Windows x64 PC, copy either the complete folder or the ZIP. If using the ZIP,
+extract the whole archive and run `Universal ISO Builder.exe` inside the extracted folder.
+Never move only the onedir EXE; `_internal` is part of the application. The Windows build
+is currently unsigned, so Windows may identify the publisher as unknown. Do not bypass
+SmartScreen or antivirus controls.
+
+The older `build_qt_exe.ps1` and `build_qt_onefile_optional.ps1` scripts are retained for
+compatibility and diagnostics. The portable onedir ZIP above is the recommended output.
+For future private or public distribution, attach the ZIP and checksum to a GitHub
+Release instead of committing generated artifacts to the repository.
+
+### macOS target-native app and ZIP
+
+Build macOS artifacts on macOS, never on Windows. Create a locked environment first:
+
+```bash
+uv sync --locked --all-groups
+chmod +x build_portable_macos.sh
+./build_portable_macos.sh arm64
+```
+
+For an Intel Mac, use an x86_64 Python environment and run:
+
+```bash
+./build_portable_macos.sh x86_64
+```
+
+Exact target-specific outputs are:
+
+```text
+dist/Universal ISO Builder-macOS-arm64.app
+dist/Universal ISO Builder-macOS-arm64.zip
+dist/Universal ISO Builder-macOS-arm64.zip.sha256.txt
+
+dist/Universal ISO Builder-macOS-x86_64.app
+dist/Universal ISO Builder-macOS-x86_64.zip
+dist/Universal ISO Builder-macOS-x86_64.zip.sha256.txt
+```
+
+These are separate target-native builds, not a universal2 binary. The script refuses a
+requested architecture that does not match the active Python process. Without
+`UIB_CODESIGN_IDENTITY`, PyInstaller performs ad-hoc signing only; Gatekeeper distribution
+is **NOT VERIFIED** and notarization is not performed.
+
+For a future Developer ID build, set the identity only in the local shell. PyInstaller
+enables Hardened Runtime when a real signing identity is supplied. After creating a
+keychain notary profile locally, the release flow is:
+
+```bash
+UIB_CODESIGN_IDENTITY='Developer ID Application: YOUR NAME (TEAMID)' ./build_portable_macos.sh arm64
+xcrun notarytool submit 'dist/Universal ISO Builder-macOS-arm64.zip' --keychain-profile 'UIB_NOTARY' --wait
+xcrun stapler staple 'dist/Universal ISO Builder-macOS-arm64.app'
+xcrun stapler validate 'dist/Universal ISO Builder-macOS-arm64.app'
+```
+
+Use the corresponding x86_64 names for Intel. Never commit certificate credentials,
+Apple credentials, or a notary profile. macOS build, launch, `hdiutil`, Developer ID
+signing, and notarization remain **NOT VERIFIED** until performed on the relevant Mac.
 
 ## Troubleshooting
 
@@ -338,8 +391,8 @@ the app.
 
 ### `Failed to load Python DLL` after moving an EXE
 
-An onedir EXE was moved without `_internal`. Copy the full folder from
-`dist-qt/Universal ISO Builder/`, or use the optional onefile build.
+An onedir EXE was moved without `_internal`. Extract and copy the full portable folder
+from `dist/Universal ISO Builder-Windows-x86_64.zip`; do not move the EXE alone.
 
 ### `oscdimg` is not detected
 
@@ -364,8 +417,9 @@ and exact error. Keep the result **NOT VERIFIED** until the manual workflow succ
 | Windows `oscdimg` and IMAPI real ISO + SHA256 | VERIFIED |
 | Qt onedir EXE launch | VERIFIED |
 | Qt onefile relocated launch and real ISO + SHA256 | VERIFIED |
+| Portable Windows x86_64 folder/ZIP build, extracted smoke launch, and visible-window launch | VERIFIED on Windows 10 build host |
 | Windows 11 | NOT VERIFIED / deferred |
-| macOS source runtime and `hdiutil` output | NOT VERIFIED / deferred |
+| macOS `.app`, ZIP, source runtime, and `hdiutil` output | NOT VERIFIED / target-native build required |
 | Linux runtime and backend output | NOT VERIFIED |
 | Public code signing | NOT APPLICABLE to current personal build |
 | Public GitHub release | NOT CREATED |
