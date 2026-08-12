@@ -34,52 +34,31 @@ from tkinter import filedialog, messagebox, ttk
 
 from iso_builder.backends import (
     detect_backends,
-    find_windows_powershell,
     select_backend,
     select_requested_backend,
 )
-from iso_builder.backends.commands import (
-    build_command,
-    build_hdiutil_command,
-    build_mkisofs_compatible_command,
-    build_oscdimg_command,
-    build_powershell_imapi_command,
-    build_xorriso_command,
-)
-from iso_builder.backends.imapi import (
-    cleanup_temp_script_from_command,
-    make_windows_imapi_script,
-)
+from iso_builder.backends.imapi import cleanup_temp_script_from_command
 from iso_builder.constants import (
     APP_NAME,
     APP_VERSION,
     PROFILE_AUTO,
-    PROFILE_LEGACY,
-    PROFILE_MODERN,
-    PROFILE_UDF_ONLY,
     PROFILES,
-    WINDOWS_OSCDIMG_PATHS,
-    WINDOWS_POWERSHELL_PATHS,
 )
 from iso_builder.cancellation import BuildCancellation
 from iso_builder.models import (
     Backend,
-    BuildExecutionResult,
     BuildOptions,
     BuildPlan,
     BuildRequest,
     ScanResult,
     UIEvent,
 )
-from iso_builder.execution import calculate_sha256, execute_build_plan, run_process
+from iso_builder.execution import execute_build_plan
 from iso_builder.naming import (
     auto_names_from_source,
-    clean_volume_label,
-    normalize_iso_name,
     resolve_build_paths,
-    safe_path_component,
 )
-from iso_builder.scanning import is_hidden_path, scan_source_folder
+from iso_builder.scanning import scan_source_folder
 from iso_builder.planner import prepare_build_plan
 from iso_builder.utils import human_size, quote_cmd
 
