@@ -244,7 +244,7 @@ class QtGuiContractTests(unittest.TestCase):
         self.assertIn("color: parent.hovered", qml)
         self.assertIn(": modelData.baseColor", qml)
 
-    def test_existing_production_entrypoint_remains_tkinter(self) -> None:
+    def test_versioned_compatibility_entrypoint_remains_tkinter(self) -> None:
         launcher = (ROOT / "universal_iso_builder_v1_4_1.py").read_text(
             encoding="utf-8"
         )
