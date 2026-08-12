@@ -55,6 +55,11 @@ class ToolingPolicyTests(unittest.TestCase):
         self.assertIn(".uv-cache/", gitignore)
         self.assertIn(".pre-commit-cache/", gitignore)
 
+    def test_uv_lock_uses_lf_line_endings(self) -> None:
+        attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+
+        self.assertIn("uv.lock text eol=lf", attributes)
+
 
 if __name__ == "__main__":
     unittest.main()
