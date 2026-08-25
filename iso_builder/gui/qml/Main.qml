@@ -1504,6 +1504,7 @@ ApplicationWindow {
 
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.topMargin: 13
                                     spacing: 12
 
                                     ColumnLayout {
