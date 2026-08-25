@@ -1568,7 +1568,7 @@ ApplicationWindow {
 
                                     GradientButton {
                                         Layout.preferredWidth: 130
-                                        Layout.preferredHeight: 44
+                                        Layout.preferredHeight: 55
                                         text: bridge.isPlanning
                                               ? "Preparing..."
                                               : "Show Command"
@@ -1580,7 +1580,7 @@ ApplicationWindow {
 
                                     GradientButton {
                                         Layout.preferredWidth: 110
-                                        Layout.preferredHeight: 44
+                                        Layout.preferredHeight: 55
                                         text: bridge.isDryRunning
                                               ? "Running..."
                                               : "Dry Test"
@@ -1592,7 +1592,7 @@ ApplicationWindow {
 
                                     GradientButton {
                                         Layout.fillWidth: true
-                                        Layout.preferredHeight: 44
+                                        Layout.preferredHeight: 55
                                         text: bridge.isBuildRunning
                                               ? "Cancel Build"
                                               : "Create ISO"
