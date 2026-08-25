@@ -1760,7 +1760,7 @@ ApplicationWindow {
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.margins: 20
+                            anchors.margins: 22
                             spacing: 22
 
                             ColumnLayout {
@@ -1806,11 +1806,11 @@ ApplicationWindow {
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 12
+                                    spacing: 16
 
                                     PremiumProgressBar {
                                         Layout.fillWidth: true
-                                        Layout.preferredHeight: 13
+                                        Layout.preferredHeight: 18
                                         value: bridge.buildProgress
                                         indeterminate: bridge.buildProgressIndeterminate
                                         trackColor: window.darkMode
@@ -1836,14 +1836,15 @@ ApplicationWindow {
                             }
 
                             RowLayout {
-                                Layout.preferredWidth: 334
-                                Layout.minimumWidth: 334
-                                Layout.maximumWidth: 334
+                                Layout.preferredWidth: 306
+                                Layout.minimumWidth: 306
+                                Layout.maximumWidth: 306
+                                Layout.leftMargin: 28
                                 spacing: 12
 
                                 ClayBadge {
-                                    Layout.preferredWidth: 48
-                                    Layout.preferredHeight: 48
+                                    Layout.preferredWidth: 55
+                                    Layout.preferredHeight: 55
                                     iconSource: Qt.resolvedUrl("assets/icons/disc.svg")
                                     iconSize: 31
                                     symbolSize: 16
