@@ -4,6 +4,8 @@ import QtQuick.Layouts
 GlassCard {
     id: root
 
+    cornerRadius: 18
+
     property string symbol: "●"
     property url iconSource: ""
     property color accent: "#7458f5"

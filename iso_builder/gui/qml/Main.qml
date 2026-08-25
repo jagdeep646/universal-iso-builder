@@ -1437,7 +1437,7 @@ ApplicationWindow {
                                 Rectangle {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 58
-                                    radius: 13
+                                    radius: 15
                                     color: window.darkMode ? "#252b43" : "#f9f9fd"
                                     border.width: 1
                                     border.color: window.darkMode ? "#46506a" : "#dcdeea"
