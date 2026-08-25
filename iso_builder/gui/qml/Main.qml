@@ -977,7 +977,7 @@ ApplicationWindow {
                             anchors.bottomMargin: 15
                             text: "ISO BUILDER"
                             color: "white"
-                            font.pixelSize: 18
+                            font.pixelSize: 20
                             font.weight: Font.DemiBold
                             font.letterSpacing: 0.5
                         }
@@ -1087,7 +1087,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: bridge.statusDetail
                                     color: "#c5cce3"
-                                    font.pixelSize: 10
+                                    font.pixelSize: 11
                                     wrapMode: Text.WordWrap
                                     maximumLineCount: 2
                                 }

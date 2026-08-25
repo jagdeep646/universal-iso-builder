@@ -54,7 +54,7 @@ Button {
             anchors.verticalCenter: parent.verticalCenter
             text: control.text
             color: control.visualHighlight ? "white" : "#d9deef"
-            font.pixelSize: 14
+            font.pixelSize: 15
             font.weight: control.visualHighlight ? Font.DemiBold : Font.Normal
         }
     }
