@@ -6,11 +6,11 @@ Item {
 
     property color fillColor: "#e8ffffff"
     property color edgeColor: "#80ffffff"
-    property color shadowColor: "#340f1846"
+    property color shadowColor: "#34202020"
     property real cornerRadius: 22
     property real shadowBlur: 0.45
     property bool darkSurface: false
-    property real highlightOpacity: darkSurface ? 0.08 : 0.22
+    property real highlightOpacity: darkSurface ? 0.08 : 0.40
     default property alias content: contentLayer.data
 
     Rectangle {

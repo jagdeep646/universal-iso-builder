@@ -15,12 +15,12 @@ Button {
 
     contentItem: Row {
         leftPadding: 16
-        spacing: 12
+        spacing: 15
         anchors.verticalCenter: parent.verticalCenter
 
         Item {
-            width: 21
-            height: 21
+            width: 24
+            height: 24
 
             Image {
                 anchors.fill: parent
@@ -54,7 +54,7 @@ Button {
             anchors.verticalCenter: parent.verticalCenter
             text: control.text
             color: control.visualHighlight ? "white" : "#d9deef"
-            font.pixelSize: 14
+            font.pixelSize: 15
             font.weight: control.visualHighlight ? Font.DemiBold : Font.Normal
         }
     }
@@ -62,6 +62,17 @@ Button {
     background: Rectangle {
         radius: 14
         color: control.visualHighlight ? "#7355ec" : "transparent"
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop {
+                position: 0.0
+                color: control.visualHighlight ? "#785ee5" : "transparent"
+            }
+            GradientStop {
+                position: 1.0
+                color: control.visualHighlight ? "#7b6ce9" : "transparent"
+            }
+        }
         border.width: control.visualHighlight ? 1 : 0
         border.color: "#9e8cff"
         layer.enabled: control.visualHighlight

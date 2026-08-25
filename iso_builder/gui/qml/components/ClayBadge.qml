@@ -26,19 +26,29 @@ Item {
         layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
-            shadowColor: Qt.alpha(root.accent, 0.38)
+            shadowColor: Qt.alpha(root.accent, 0.20)
             shadowBlur: 0.65
-            shadowVerticalOffset: 5
+            shadowVerticalOffset: 4
         }
 
         Rectangle {
             anchors.fill: parent
-            anchors.margins: 8
+            anchors.margins: Math.max(7, parent.width * 0.16)
             radius: width / 2
             color: root.accent
             gradient: Gradient {
                 GradientStop { position: 0.0; color: Qt.lighter(root.accent, 1.25) }
                 GradientStop { position: 1.0; color: Qt.darker(root.accent, 1.08) }
+            }
+
+            Rectangle {
+                width: parent.width * 0.58
+                height: parent.height * 0.24
+                radius: height / 2
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.top
+                anchors.topMargin: parent.height * 0.12
+                color: "#5cffffff"
             }
         }
     }

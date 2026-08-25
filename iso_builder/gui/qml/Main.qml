@@ -22,11 +22,11 @@ ApplicationWindow {
     readonly property bool darkMode: followSystemTheme
                                      ? bridge.systemDarkMode
                                      : manualDarkMode
-    readonly property color workspaceColor: darkMode ? "#171b31" : "#f4f3fa"
-    readonly property color cardColor: darkMode ? "#e8232941" : "#e8ffffff"
+    readonly property color workspaceColor: darkMode ? "#171b31" : "#efeaf0"
+    readonly property color cardColor: darkMode ? "#e8232941" : "#f2e8e7ee"
     readonly property color cardEdge: darkMode ? "#3e495f78" : "#9affffff"
     readonly property color ink: darkMode ? "#f4f3ff" : "#17204f"
-    readonly property color muted: darkMode ? "#aeb5d1" : "#6e7599"
+    readonly property color muted: darkMode ? "#aeb5d1" : "#626578"
     readonly property color purple: "#7a55f4"
     readonly property color blue: "#398df7"
     readonly property color cyan: "#32c6ea"
@@ -218,25 +218,14 @@ ApplicationWindow {
                     }
                 }
 
-                Button {
+                AccentButton {
                     id: outputBrowseButton
                     Layout.preferredWidth: 92
                     Layout.preferredHeight: 42
                     text: "Browse"
+                    cornerRadius: 12
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                     onClicked: outputFolderDialog.open()
-                    contentItem: Text {
-                        text: outputBrowseButton.text
-                        color: "white"
-                        font.pixelSize: 12
-                        font.weight: Font.DemiBold
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 12
-                        color: outputBrowseButton.hovered ? "#765ff0" : "#6553d9"
-                    }
                 }
             }
 
@@ -266,14 +255,19 @@ ApplicationWindow {
                              && !bridge.isDryRunning
                              && !bridge.isBuildRunning
                     selectByMouse: true
-                    color: window.ink
+                    hoverEnabled: true
+                    color: enabled ? window.ink : window.muted
                     placeholderTextColor: window.muted
                     background: Rectangle {
                         radius: 12
                         color: window.darkMode ? "#292f46" : "#ffffff"
-                        border.width: 1
-                        border.color: window.darkMode ? "#4b536b" : "#dcdeea"
-                        opacity: isoNameField.enabled ? 1.0 : 0.65
+                        border.width: isoNameField.activeFocus ? 2 : 1
+                        border.color: isoNameField.activeFocus
+                                      ? window.purple
+                                      : (isoNameField.hovered && isoNameField.enabled
+                                         ? Qt.alpha(window.purple, 0.45)
+                                         : (window.darkMode ? "#4b536b" : "#dcdeea"))
+                        opacity: isoNameField.enabled ? 1.0 : 0.72
                     }
                 }
 
@@ -286,13 +280,20 @@ ApplicationWindow {
                              && !bridge.isDryRunning
                              && !bridge.isBuildRunning
                     selectByMouse: true
-                    color: window.ink
+                    hoverEnabled: true
+                    color: enabled ? window.ink : window.muted
+                    placeholderTextColor: window.muted
                     background: Rectangle {
                         radius: 12
                         color: window.darkMode ? "#292f46" : "#ffffff"
-                        border.width: 1
-                        border.color: window.darkMode ? "#4b536b" : "#dcdeea"
-                        opacity: volumeLabelField.enabled ? 1.0 : 0.65
+                        border.width: volumeLabelField.activeFocus ? 2 : 1
+                        border.color: volumeLabelField.activeFocus
+                                      ? window.purple
+                                      : (volumeLabelField.hovered
+                                         && volumeLabelField.enabled
+                                         ? Qt.alpha(window.purple, 0.45)
+                                         : (window.darkMode ? "#4b536b" : "#dcdeea"))
+                        opacity: volumeLabelField.enabled ? 1.0 : 0.72
                     }
                 }
 
@@ -307,22 +308,30 @@ ApplicationWindow {
                     font.pixelSize: 12
                 }
 
-                ComboBox {
+                PremiumComboBox {
                     id: profileCombo
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
                     model: bridge.profileOptions
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                     currentIndex: 0
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                 }
 
-                ComboBox {
+                PremiumComboBox {
                     id: backendCombo
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
                     model: bridge.backendOptions
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                     currentIndex: 0
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                 }
             }
 
@@ -332,36 +341,44 @@ ApplicationWindow {
                 columnSpacing: 22
                 rowSpacing: 5
 
-                CheckBox {
+                PremiumCheckBox {
                     id: autoPackageCheck
                     text: "Auto package folder"
                     checked: false
-                    palette.windowText: window.ink
-                    palette.text: window.ink
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
-                CheckBox {
+                PremiumCheckBox {
                     id: includeHiddenCheck
                     text: "Include hidden files"
                     checked: false
-                    palette.windowText: window.ink
-                    palette.text: window.ink
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
-                CheckBox {
+                PremiumCheckBox {
                     id: generateHashCheck
                     text: "Generate SHA256"
                     checked: false
-                    palette.windowText: window.ink
-                    palette.text: window.ink
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
-                CheckBox {
+                PremiumCheckBox {
                     id: optimizeCheck
                     text: "Optimize duplicates"
                     checked: false
-                    palette.windowText: window.ink
-                    palette.text: window.ink
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
             }
@@ -936,12 +953,12 @@ ApplicationWindow {
                 id: sidebar
                 Layout.preferredWidth: 232
                 Layout.fillHeight: true
-                color: "#1a244d"
+                color: "#3b4169"
 
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#29345f" }
-                    GradientStop { position: 0.52; color: "#1b2854" }
-                    GradientStop { position: 1.0; color: "#121d43" }
+                    GradientStop { position: 0.0; color: "#555979" }
+                    GradientStop { position: 0.52; color: "#3b4169" }
+                    GradientStop { position: 1.0; color: "#30375f" }
                 }
 
                 Rectangle {
@@ -977,7 +994,7 @@ ApplicationWindow {
                             anchors.bottomMargin: 15
                             text: "ISO BUILDER"
                             color: "white"
-                            font.pixelSize: 18
+                            font.pixelSize: 20
                             font.weight: Font.DemiBold
                             font.letterSpacing: 0.5
                         }
@@ -1087,7 +1104,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: bridge.statusDetail
                                     color: "#c5cce3"
-                                    font.pixelSize: 10
+                                    font.pixelSize: 11
                                     wrapMode: Text.WordWrap
                                     maximumLineCount: 2
                                 }
@@ -1299,28 +1316,83 @@ ApplicationWindow {
                             Text {
                                 text: "Welcome back!"
                                 color: window.muted
-                                font.pixelSize: 15
+                                font.pixelSize: 18
                             }
                             Text {
                                 text: "Universal ISO Builder"
                                 color: window.ink
-                                font.pixelSize: 32
-                                font.weight: Font.DemiBold
+                                font.pixelSize: 43
+                                font.weight: Font.Medium
                             }
                             Text {
                                 text: "Create reliable ISO packages with verified Windows backends."
                                 color: window.muted
-                                font.pixelSize: 14
+                                font.pixelSize: 18
                             }
                         }
 
-                        DiscArt {
-                            width: 100
-                            height: 100
+                        Item {
+                            id: heroArtwork
+                            width: 300
+                            height: 190
                             anchors.right: parent.right
-                            anchors.rightMargin: 45
+                            anchors.rightMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            opacity: 0.9
+
+                            Rectangle {
+                                id: heroPedestal
+                                width: 270
+                                height: 100
+                                radius: 50
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 2
+                                color: window.darkMode ? "#35405b" : "#d9cec9"
+                                gradient: Gradient {
+                                    GradientStop {
+                                        position: 0.0
+                                        color: window.darkMode
+                                               ? "#59627a"
+                                               : "#fff4e8"
+                                    }
+                                    GradientStop {
+                                        position: 1.0
+                                        color: window.darkMode
+                                               ? "#242d47"
+                                               : "#cbbdb8"
+                                    }
+                                }
+                                layer.enabled: true
+                                layer.effect: MultiEffect {
+                                    shadowEnabled: true
+                                    shadowColor: window.darkMode
+                                                 ? "#5c000000"
+                                                 : "#3d6c5677"
+                                    shadowBlur: 0.75
+                                    shadowVerticalOffset: 9
+                                }
+
+                                Rectangle {
+                                    width: parent.width * 0.76
+                                    height: parent.height * 0.48
+                                    radius: height / 2
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 8
+                                    color: window.darkMode
+                                           ? "#245f6984"
+                                           : "#66ffffff"
+                                }
+                            }
+
+                            DiscArt {
+                                width: 170
+                                height: 170
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top
+                                anchors.topMargin: -5
+                                opacity: 0.94
+                            }
                         }
                     }
 
@@ -1418,7 +1490,7 @@ ApplicationWindow {
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 18
+                                anchors.margins: 23
                                 spacing: 8
 
                                 Text {
@@ -1431,13 +1503,13 @@ ApplicationWindow {
                                 Text {
                                     text: "Source Folder"
                                     color: window.muted
-                                    font.pixelSize: 12
+                                    font.pixelSize: 13
                                 }
 
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 44
-                                    radius: 13
+                                    Layout.preferredHeight: 58
+                                    radius: 15
                                     color: window.darkMode ? "#252b43" : "#f9f9fd"
                                     border.width: 1
                                     border.color: window.darkMode ? "#46506a" : "#dcdeea"
@@ -1463,29 +1535,15 @@ ApplicationWindow {
                                             elide: Text.ElideMiddle
                                         }
 
-                                        Button {
+                                        AccentButton {
                                             id: sourceBrowseButton
-                                            Layout.preferredWidth: 82
-                                            Layout.preferredHeight: 32
+                                            Layout.preferredWidth: 95
+                                            Layout.preferredHeight: 33
                                             text: "Browse"
+                                            cornerRadius: 10
                                             enabled: !bridge.isDryRunning
                                                      && !bridge.isBuildRunning
                                             onClicked: sourceFolderDialog.open()
-                                            contentItem: Text {
-                                                text: sourceBrowseButton.text
-                                                color: "white"
-                                                font.pixelSize: 12
-                                                font.weight: Font.DemiBold
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
-                                            background: Rectangle {
-                                                radius: 10
-                                                color: sourceBrowseButton.hovered
-                                                       ? "#765ff0"
-                                                       : "#6553d9"
-                                                opacity: sourceBrowseButton.down ? 0.78 : 0.92
-                                            }
                                         }
                                     }
 
@@ -1504,6 +1562,7 @@ ApplicationWindow {
 
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.topMargin: 13
                                     spacing: 12
 
                                     ColumnLayout {
@@ -1512,7 +1571,7 @@ ApplicationWindow {
                                         Text {
                                             text: "Volume Label"
                                             color: window.muted
-                                            font.pixelSize: 12
+                                            font.pixelSize: 13
                                         }
                                         Rectangle {
                                             Layout.fillWidth: true
@@ -1538,7 +1597,7 @@ ApplicationWindow {
                                         Text {
                                             text: "Build Profile"
                                             color: window.muted
-                                            font.pixelSize: 12
+                                            font.pixelSize: 13
                                         }
                                         Rectangle {
                                             Layout.fillWidth: true
@@ -1567,7 +1626,7 @@ ApplicationWindow {
 
                                     GradientButton {
                                         Layout.preferredWidth: 130
-                                        Layout.preferredHeight: 44
+                                        Layout.preferredHeight: 55
                                         text: bridge.isPlanning
                                               ? "Preparing..."
                                               : "Show Command"
@@ -1579,7 +1638,7 @@ ApplicationWindow {
 
                                     GradientButton {
                                         Layout.preferredWidth: 110
-                                        Layout.preferredHeight: 44
+                                        Layout.preferredHeight: 55
                                         text: bridge.isDryRunning
                                               ? "Running..."
                                               : "Dry Test"
@@ -1591,18 +1650,19 @@ ApplicationWindow {
 
                                     GradientButton {
                                         Layout.fillWidth: true
-                                        Layout.preferredHeight: 44
+                                        Layout.preferredHeight: 55
                                         text: bridge.isBuildRunning
                                               ? "Cancel Build"
                                               : "Create ISO"
+                                        showArrow: !bridge.isBuildRunning
                                         enabled: bridge.isBuildRunning
                                                  || bridge.canStartBuild
                                         startColor: bridge.isBuildRunning
                                                     ? "#ef7859"
-                                                    : "#8155f5"
+                                                    : "#865fe7"
                                         endColor: bridge.isBuildRunning
                                                   ? "#e44767"
-                                                  : "#398cf6"
+                                                  : "#5575e4"
                                         onClicked: {
                                             if (bridge.isBuildRunning) {
                                                 bridge.cancelBuild()
@@ -1635,7 +1695,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: "Live Status"
                                         color: window.ink
-                                        font.pixelSize: 18
+                                        font.pixelSize: 17
                                         font.weight: Font.DemiBold
                                     }
 
@@ -1716,7 +1776,7 @@ ApplicationWindow {
                                                 Layout.fillWidth: true
                                                 text: modelData.title
                                                 color: window.ink
-                                                font.pixelSize: 12
+                                                font.pixelSize: 13
                                                 font.weight: Font.DemiBold
                                                 elide: Text.ElideRight
                                             }
@@ -1724,7 +1784,7 @@ ApplicationWindow {
                                                 Layout.fillWidth: true
                                                 text: modelData.detail
                                                 color: window.muted
-                                                font.pixelSize: 10
+                                                font.pixelSize: 11
                                                 wrapMode: Text.WordWrap
                                                 maximumLineCount: 2
                                             }
@@ -1759,7 +1819,7 @@ ApplicationWindow {
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.margins: 20
+                            anchors.margins: 22
                             spacing: 22
 
                             ColumnLayout {
@@ -1772,7 +1832,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: "Build progress"
                                         color: window.ink
-                                        font.pixelSize: 15
+                                        font.pixelSize: 16
                                         font.weight: Font.DemiBold
                                     }
                                     Button {
@@ -1799,17 +1859,17 @@ ApplicationWindow {
                                     Text {
                                         text: bridge.buildStatusText
                                         color: window.muted
-                                        font.pixelSize: 12
+                                        font.pixelSize: 13
                                     }
                                 }
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 12
+                                    spacing: 16
 
                                     PremiumProgressBar {
                                         Layout.fillWidth: true
-                                        Layout.preferredHeight: 13
+                                        Layout.preferredHeight: 18
                                         value: bridge.buildProgress
                                         indeterminate: bridge.buildProgressIndeterminate
                                         trackColor: window.darkMode
@@ -1822,7 +1882,7 @@ ApplicationWindow {
                                               ? "Working"
                                               : bridge.buildProgressPercent + "%"
                                         color: window.ink
-                                        font.pixelSize: 13
+                                        font.pixelSize: 16
                                         font.weight: Font.DemiBold
                                     }
                                 }
@@ -1835,18 +1895,16 @@ ApplicationWindow {
                             }
 
                             RowLayout {
-                                Layout.preferredWidth: 334
-                                Layout.minimumWidth: 334
-                                Layout.maximumWidth: 334
+                                Layout.preferredWidth: 306
+                                Layout.minimumWidth: 306
+                                Layout.maximumWidth: 306
+                                Layout.leftMargin: 28
                                 spacing: 12
 
-                                ClayBadge {
-                                    Layout.preferredWidth: 48
-                                    Layout.preferredHeight: 48
-                                    iconSource: Qt.resolvedUrl("assets/icons/disc.svg")
-                                    iconSize: 31
-                                    symbolSize: 16
-                                    accent: window.blue
+                                DiscArt {
+                                    Layout.preferredWidth: 55
+                                    Layout.preferredHeight: 55
+                                    artSource: Qt.resolvedUrl("assets/icons/disc.svg")
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true
@@ -1854,7 +1912,7 @@ ApplicationWindow {
                                     Text {
                                         text: "Output"
                                         color: window.ink
-                                        font.pixelSize: 13
+                                        font.pixelSize: 14
                                         font.weight: Font.DemiBold
                                     }
                                     Text {
@@ -1868,7 +1926,7 @@ ApplicationWindow {
                                                  ? bridge.outputPreview
                                                  : "No ISO output yet")
                                         color: window.muted
-                                        font.pixelSize: 11
+                                        font.pixelSize: 12
                                         elide: Text.ElideRight
                                     }
                                 }

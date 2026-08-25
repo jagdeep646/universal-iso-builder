@@ -4,13 +4,15 @@ import QtQuick.Layouts
 GlassCard {
     id: root
 
+    cornerRadius: 18
+
     property string symbol: "●"
     property url iconSource: ""
     property color accent: "#7458f5"
     property string caption: ""
     property string value: ""
     property string detail: ""
-    property color captionColor: "#73799a"
+    property color captionColor: "#626578"
     property color valueColor: "#17204d"
 
     implicitHeight: 100
@@ -24,9 +26,10 @@ GlassCard {
             symbol: root.symbol
             iconSource: root.iconSource
             accent: root.accent
-            Layout.preferredWidth: 42
-            Layout.preferredHeight: 42
-            symbolSize: 16
+            Layout.preferredWidth: 50
+            Layout.preferredHeight: 50
+            iconSize: 27
+            symbolSize: 18
         }
 
         ColumnLayout {
@@ -37,7 +40,7 @@ GlassCard {
                 Layout.fillWidth: true
                 text: root.caption
                 color: root.captionColor
-                font.pixelSize: 11
+                font.pixelSize: 12
                 elide: Text.ElideRight
             }
             Text {
@@ -52,7 +55,7 @@ GlassCard {
                 Layout.fillWidth: true
                 text: root.detail
                 color: root.accent
-                font.pixelSize: 10
+                font.pixelSize: 12
                 elide: Text.ElideRight
             }
         }
