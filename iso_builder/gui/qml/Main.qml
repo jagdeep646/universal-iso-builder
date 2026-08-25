@@ -1299,18 +1299,18 @@ ApplicationWindow {
                             Text {
                                 text: "Welcome back!"
                                 color: window.muted
-                                font.pixelSize: 15
+                                font.pixelSize: 18
                             }
                             Text {
                                 text: "Universal ISO Builder"
                                 color: window.ink
-                                font.pixelSize: 32
-                                font.weight: Font.DemiBold
+                                font.pixelSize: 43
+                                font.weight: Font.Medium
                             }
                             Text {
                                 text: "Create reliable ISO packages with verified Windows backends."
                                 color: window.muted
-                                font.pixelSize: 14
+                                font.pixelSize: 18
                             }
                         }
 
