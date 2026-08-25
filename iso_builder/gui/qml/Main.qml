@@ -8,8 +8,8 @@ import "components"
 ApplicationWindow {
     id: window
 
-    width: 1320
-    height: 880
+    width: 1275
+    height: 1020
     minimumWidth: 1080
     minimumHeight: 720
     visible: true
@@ -1288,7 +1288,7 @@ ApplicationWindow {
 
                     Item {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 100
+                        Layout.preferredHeight: 190
 
                         Column {
                             anchors.left: parent.left
@@ -1326,8 +1326,9 @@ ApplicationWindow {
 
                     GridLayout {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 100
-                        Layout.minimumHeight: 100
+                        Layout.preferredHeight: 125
+                        Layout.minimumHeight: 125
+                        Layout.maximumHeight: 125
                         columns: 4
                         columnSpacing: 14
 
