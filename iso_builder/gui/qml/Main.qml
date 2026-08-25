@@ -22,11 +22,11 @@ ApplicationWindow {
     readonly property bool darkMode: followSystemTheme
                                      ? bridge.systemDarkMode
                                      : manualDarkMode
-    readonly property color workspaceColor: darkMode ? "#171b31" : "#f4f3fa"
-    readonly property color cardColor: darkMode ? "#e8232941" : "#e8ffffff"
+    readonly property color workspaceColor: darkMode ? "#171b31" : "#efeaf0"
+    readonly property color cardColor: darkMode ? "#e8232941" : "#f2e8e7ee"
     readonly property color cardEdge: darkMode ? "#3e495f78" : "#9affffff"
     readonly property color ink: darkMode ? "#f4f3ff" : "#17204f"
-    readonly property color muted: darkMode ? "#aeb5d1" : "#6e7599"
+    readonly property color muted: darkMode ? "#aeb5d1" : "#666b88"
     readonly property color purple: "#7a55f4"
     readonly property color blue: "#398df7"
     readonly property color cyan: "#32c6ea"
@@ -936,12 +936,12 @@ ApplicationWindow {
                 id: sidebar
                 Layout.preferredWidth: 232
                 Layout.fillHeight: true
-                color: "#1a244d"
+                color: "#3b4169"
 
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#29345f" }
-                    GradientStop { position: 0.52; color: "#1b2854" }
-                    GradientStop { position: 1.0; color: "#121d43" }
+                    GradientStop { position: 0.0; color: "#555979" }
+                    GradientStop { position: 0.52; color: "#3b4169" }
+                    GradientStop { position: 1.0; color: "#30375f" }
                 }
 
                 Rectangle {
@@ -1600,10 +1600,10 @@ ApplicationWindow {
                                                  || bridge.canStartBuild
                                         startColor: bridge.isBuildRunning
                                                     ? "#ef7859"
-                                                    : "#8155f5"
+                                                    : "#865fe7"
                                         endColor: bridge.isBuildRunning
                                                   ? "#e44767"
-                                                  : "#398cf6"
+                                                  : "#5575e4"
                                         onClicked: {
                                             if (bridge.isBuildRunning) {
                                                 bridge.cancelBuild()

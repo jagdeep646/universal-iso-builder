@@ -62,6 +62,17 @@ Button {
     background: Rectangle {
         radius: 14
         color: control.visualHighlight ? "#7355ec" : "transparent"
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop {
+                position: 0.0
+                color: control.visualHighlight ? "#785ee5" : "transparent"
+            }
+            GradientStop {
+                position: 1.0
+                color: control.visualHighlight ? "#7b6ce9" : "transparent"
+            }
+        }
         border.width: control.visualHighlight ? 1 : 0
         border.color: "#9e8cff"
         layer.enabled: control.visualHighlight

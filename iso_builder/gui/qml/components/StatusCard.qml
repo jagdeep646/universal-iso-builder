@@ -10,7 +10,7 @@ GlassCard {
     property string caption: ""
     property string value: ""
     property string detail: ""
-    property color captionColor: "#73799a"
+    property color captionColor: "#666b88"
     property color valueColor: "#17204d"
 
     implicitHeight: 100

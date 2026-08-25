@@ -5,8 +5,8 @@ import QtQuick.Effects
 Button {
     id: control
 
-    property color startColor: "#8155f5"
-    property color endColor: "#398cf6"
+    property color startColor: "#865fe7"
+    property color endColor: "#5575e4"
     property bool glowEnabled: true
 
     implicitHeight: 54
@@ -27,6 +27,7 @@ Button {
         opacity: control.enabled ? 1.0 : 0.9
         scale: control.down ? 0.985 : (control.hovered ? 1.012 : 1.0)
         gradient: Gradient {
+            orientation: Gradient.Horizontal
             GradientStop { position: 0.0; color: control.startColor }
             GradientStop { position: 1.0; color: control.endColor }
         }
