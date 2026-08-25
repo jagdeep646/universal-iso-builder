@@ -1418,7 +1418,7 @@ ApplicationWindow {
 
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 18
+                                anchors.margins: 23
                                 spacing: 8
 
                                 Text {
