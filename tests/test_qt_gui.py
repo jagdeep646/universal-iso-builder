@@ -93,11 +93,14 @@ class QtGuiContractTests(unittest.TestCase):
     def test_premium_qml_components_exist(self) -> None:
         components = ROOT / "iso_builder" / "gui" / "qml" / "components"
         expected = {
+            "AccentButton.qml",
             "ClayBadge.qml",
             "DiscArt.qml",
             "GlassCard.qml",
             "GradientButton.qml",
             "NavButton.qml",
+            "PremiumCheckBox.qml",
+            "PremiumComboBox.qml",
             "PremiumProgressBar.qml",
             "StatusCard.qml",
             "WindowResizeHandle.qml",
@@ -202,11 +205,38 @@ class QtGuiContractTests(unittest.TestCase):
         self.assertGreaterEqual(qml.count("captionColor: window.muted"), 4)
         self.assertIn("color: root.valueColor", status_card)
         self.assertIn("color: root.captionColor", status_card)
-        self.assertIn("control.enabled ? 1.0 : 0.9", gradient_button)
-        self.assertIn("sourceBrowseButton.hovered", qml)
-        self.assertIn("sourceBrowseButton.down ? 0.78 : 0.92", qml)
-        self.assertEqual(qml.count("palette.windowText: window.ink"), 4)
-        self.assertEqual(qml.count("palette.text: window.ink"), 4)
+        self.assertIn("control.enabled ? 1.0 : 0.86", gradient_button)
+        self.assertIn("control.glowEnabled && control.enabled", gradient_button)
+        self.assertIn("focusPolicy: Qt.StrongFocus", gradient_button)
+        self.assertEqual(qml.count("AccentButton {"), 2)
+        self.assertEqual(qml.count("PremiumComboBox {"), 2)
+        self.assertEqual(qml.count("PremiumCheckBox {"), 4)
+        self.assertEqual(qml.count("activeFocus ? 2 : 1"), 2)
+        self.assertEqual(qml.count("Qt.alpha(window.purple, 0.45)"), 2)
+
+    def test_premium_controls_define_interaction_state_contracts(self) -> None:
+        components = ROOT / "iso_builder" / "gui" / "qml" / "components"
+        accent_button = (components / "AccentButton.qml").read_text(encoding="utf-8")
+        gradient_button = (components / "GradientButton.qml").read_text(
+            encoding="utf-8"
+        )
+        combo_box = (components / "PremiumComboBox.qml").read_text(
+            encoding="utf-8"
+        )
+        check_box = (components / "PremiumCheckBox.qml").read_text(
+            encoding="utf-8"
+        )
+
+        for control in (accent_button, gradient_button, combo_box, check_box):
+            self.assertIn("focusPolicy: Qt.StrongFocus", control)
+            self.assertIn("control.enabled", control)
+            self.assertIn("control.hovered", control)
+            self.assertIn("control.down", control)
+
+        self.assertIn("control.glowEnabled && control.enabled", gradient_button)
+        self.assertIn("control.activeFocus ? 2 : 1", accent_button)
+        self.assertIn("control.activeFocus ? 2 : 1", combo_box)
+        self.assertIn("control.activeFocus ? 2 : 1", check_box)
 
     def test_action_navigation_and_window_controls_keep_premium_color_contract(self) -> None:
         qml = (

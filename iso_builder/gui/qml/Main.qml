@@ -218,25 +218,14 @@ ApplicationWindow {
                     }
                 }
 
-                Button {
+                AccentButton {
                     id: outputBrowseButton
                     Layout.preferredWidth: 92
                     Layout.preferredHeight: 42
                     text: "Browse"
+                    cornerRadius: 12
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                     onClicked: outputFolderDialog.open()
-                    contentItem: Text {
-                        text: outputBrowseButton.text
-                        color: "white"
-                        font.pixelSize: 12
-                        font.weight: Font.DemiBold
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 12
-                        color: outputBrowseButton.hovered ? "#765ff0" : "#6553d9"
-                    }
                 }
             }
 
@@ -266,14 +255,19 @@ ApplicationWindow {
                              && !bridge.isDryRunning
                              && !bridge.isBuildRunning
                     selectByMouse: true
-                    color: window.ink
+                    hoverEnabled: true
+                    color: enabled ? window.ink : window.muted
                     placeholderTextColor: window.muted
                     background: Rectangle {
                         radius: 12
                         color: window.darkMode ? "#292f46" : "#ffffff"
-                        border.width: 1
-                        border.color: window.darkMode ? "#4b536b" : "#dcdeea"
-                        opacity: isoNameField.enabled ? 1.0 : 0.65
+                        border.width: isoNameField.activeFocus ? 2 : 1
+                        border.color: isoNameField.activeFocus
+                                      ? window.purple
+                                      : (isoNameField.hovered && isoNameField.enabled
+                                         ? Qt.alpha(window.purple, 0.45)
+                                         : (window.darkMode ? "#4b536b" : "#dcdeea"))
+                        opacity: isoNameField.enabled ? 1.0 : 0.72
                     }
                 }
 
@@ -286,13 +280,20 @@ ApplicationWindow {
                              && !bridge.isDryRunning
                              && !bridge.isBuildRunning
                     selectByMouse: true
-                    color: window.ink
+                    hoverEnabled: true
+                    color: enabled ? window.ink : window.muted
+                    placeholderTextColor: window.muted
                     background: Rectangle {
                         radius: 12
                         color: window.darkMode ? "#292f46" : "#ffffff"
-                        border.width: 1
-                        border.color: window.darkMode ? "#4b536b" : "#dcdeea"
-                        opacity: volumeLabelField.enabled ? 1.0 : 0.65
+                        border.width: volumeLabelField.activeFocus ? 2 : 1
+                        border.color: volumeLabelField.activeFocus
+                                      ? window.purple
+                                      : (volumeLabelField.hovered
+                                         && volumeLabelField.enabled
+                                         ? Qt.alpha(window.purple, 0.45)
+                                         : (window.darkMode ? "#4b536b" : "#dcdeea"))
+                        opacity: volumeLabelField.enabled ? 1.0 : 0.72
                     }
                 }
 
@@ -307,22 +308,30 @@ ApplicationWindow {
                     font.pixelSize: 12
                 }
 
-                ComboBox {
+                PremiumComboBox {
                     id: profileCombo
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
                     model: bridge.profileOptions
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                     currentIndex: 0
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                 }
 
-                ComboBox {
+                PremiumComboBox {
                     id: backendCombo
                     Layout.fillWidth: true
                     Layout.preferredHeight: 42
                     model: bridge.backendOptions
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                     currentIndex: 0
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                 }
             }
 
@@ -332,36 +341,44 @@ ApplicationWindow {
                 columnSpacing: 22
                 rowSpacing: 5
 
-                CheckBox {
+                PremiumCheckBox {
                     id: autoPackageCheck
                     text: "Auto package folder"
                     checked: false
-                    palette.windowText: window.ink
-                    palette.text: window.ink
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
-                CheckBox {
+                PremiumCheckBox {
                     id: includeHiddenCheck
                     text: "Include hidden files"
                     checked: false
-                    palette.windowText: window.ink
-                    palette.text: window.ink
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
-                CheckBox {
+                PremiumCheckBox {
                     id: generateHashCheck
                     text: "Generate SHA256"
                     checked: false
-                    palette.windowText: window.ink
-                    palette.text: window.ink
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
-                CheckBox {
+                PremiumCheckBox {
                     id: optimizeCheck
                     text: "Optimize duplicates"
                     checked: false
-                    palette.windowText: window.ink
-                    palette.text: window.ink
+                    darkSurface: window.darkMode
+                    textColor: window.ink
+                    mutedColor: window.muted
+                    accentColor: window.purple
                     enabled: !bridge.isDryRunning && !bridge.isBuildRunning
                 }
             }
@@ -1463,29 +1480,15 @@ ApplicationWindow {
                                             elide: Text.ElideMiddle
                                         }
 
-                                        Button {
+                                        AccentButton {
                                             id: sourceBrowseButton
                                             Layout.preferredWidth: 95
                                             Layout.preferredHeight: 33
                                             text: "Browse"
+                                            cornerRadius: 10
                                             enabled: !bridge.isDryRunning
                                                      && !bridge.isBuildRunning
                                             onClicked: sourceFolderDialog.open()
-                                            contentItem: Text {
-                                                text: sourceBrowseButton.text
-                                                color: "white"
-                                                font.pixelSize: 12
-                                                font.weight: Font.DemiBold
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
-                                            background: Rectangle {
-                                                radius: 10
-                                                color: sourceBrowseButton.hovered
-                                                       ? "#765ff0"
-                                                       : "#6553d9"
-                                                opacity: sourceBrowseButton.down ? 0.78 : 0.92
-                                            }
                                         }
                                     }
 
