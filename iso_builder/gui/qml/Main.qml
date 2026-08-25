@@ -1436,7 +1436,7 @@ ApplicationWindow {
 
                                 Rectangle {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 44
+                                    Layout.preferredHeight: 58
                                     radius: 13
                                     color: window.darkMode ? "#252b43" : "#f9f9fd"
                                     border.width: 1
@@ -1465,8 +1465,8 @@ ApplicationWindow {
 
                                         Button {
                                             id: sourceBrowseButton
-                                            Layout.preferredWidth: 82
-                                            Layout.preferredHeight: 32
+                                            Layout.preferredWidth: 95
+                                            Layout.preferredHeight: 33
                                             text: "Browse"
                                             enabled: !bridge.isDryRunning
                                                      && !bridge.isBuildRunning
