@@ -1636,7 +1636,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: "Live Status"
                                         color: window.ink
-                                        font.pixelSize: 18
+                                        font.pixelSize: 17
                                         font.weight: Font.DemiBold
                                     }
 
@@ -1717,7 +1717,7 @@ ApplicationWindow {
                                                 Layout.fillWidth: true
                                                 text: modelData.title
                                                 color: window.ink
-                                                font.pixelSize: 12
+                                                font.pixelSize: 13
                                                 font.weight: Font.DemiBold
                                                 elide: Text.ElideRight
                                             }
@@ -1725,7 +1725,7 @@ ApplicationWindow {
                                                 Layout.fillWidth: true
                                                 text: modelData.detail
                                                 color: window.muted
-                                                font.pixelSize: 10
+                                                font.pixelSize: 11
                                                 wrapMode: Text.WordWrap
                                                 maximumLineCount: 2
                                             }
@@ -1773,7 +1773,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: "Build progress"
                                         color: window.ink
-                                        font.pixelSize: 15
+                                        font.pixelSize: 16
                                         font.weight: Font.DemiBold
                                     }
                                     Button {
@@ -1800,7 +1800,7 @@ ApplicationWindow {
                                     Text {
                                         text: bridge.buildStatusText
                                         color: window.muted
-                                        font.pixelSize: 12
+                                        font.pixelSize: 13
                                     }
                                 }
 
@@ -1823,7 +1823,7 @@ ApplicationWindow {
                                               ? "Working"
                                               : bridge.buildProgressPercent + "%"
                                         color: window.ink
-                                        font.pixelSize: 13
+                                        font.pixelSize: 16
                                         font.weight: Font.DemiBold
                                     }
                                 }
@@ -1856,7 +1856,7 @@ ApplicationWindow {
                                     Text {
                                         text: "Output"
                                         color: window.ink
-                                        font.pixelSize: 13
+                                        font.pixelSize: 14
                                         font.weight: Font.DemiBold
                                     }
                                     Text {
@@ -1870,7 +1870,7 @@ ApplicationWindow {
                                                  ? bridge.outputPreview
                                                  : "No ISO output yet")
                                         color: window.muted
-                                        font.pixelSize: 11
+                                        font.pixelSize: 12
                                         elide: Text.ElideRight
                                     }
                                 }
