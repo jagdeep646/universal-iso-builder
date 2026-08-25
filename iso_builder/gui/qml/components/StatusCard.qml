@@ -37,7 +37,7 @@ GlassCard {
                 Layout.fillWidth: true
                 text: root.caption
                 color: root.captionColor
-                font.pixelSize: 11
+                font.pixelSize: 12
                 elide: Text.ElideRight
             }
             Text {
@@ -52,7 +52,7 @@ GlassCard {
                 Layout.fillWidth: true
                 text: root.detail
                 color: root.accent
-                font.pixelSize: 10
+                font.pixelSize: 12
                 elide: Text.ElideRight
             }
         }
