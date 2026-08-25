@@ -26,9 +26,9 @@ Item {
         layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
-            shadowColor: Qt.alpha(root.accent, 0.38)
+            shadowColor: Qt.alpha(root.accent, 0.20)
             shadowBlur: 0.65
-            shadowVerticalOffset: 5
+            shadowVerticalOffset: 4
         }
 
         Rectangle {

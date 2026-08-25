@@ -34,7 +34,7 @@ Button {
         layer.enabled: control.glowEnabled
         layer.effect: MultiEffect {
             shadowEnabled: true
-            shadowColor: "#665d53f1"
+            shadowColor: "#66202048"
             shadowBlur: control.hovered ? 0.75 : 0.48
             shadowVerticalOffset: control.hovered ? 8 : 5
         }

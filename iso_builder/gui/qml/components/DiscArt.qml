@@ -26,9 +26,9 @@ Item {
         layer.enabled: true
         layer.effect: MultiEffect {
             shadowEnabled: true
-            shadowColor: "#555d5df1"
+            shadowColor: "#405d5db0"
             shadowBlur: 0.8
-            shadowVerticalOffset: 10
+            shadowVerticalOffset: Math.max(4, root.width * 0.10)
         }
 
         Rectangle {
