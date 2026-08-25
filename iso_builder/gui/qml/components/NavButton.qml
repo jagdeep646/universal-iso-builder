@@ -15,12 +15,12 @@ Button {
 
     contentItem: Row {
         leftPadding: 16
-        spacing: 12
+        spacing: 15
         anchors.verticalCenter: parent.verticalCenter
 
         Item {
-            width: 21
-            height: 21
+            width: 24
+            height: 24
 
             Image {
                 anchors.fill: parent

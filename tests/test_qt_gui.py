@@ -274,6 +274,48 @@ class QtGuiContractTests(unittest.TestCase):
         self.assertIn("color: parent.hovered", qml)
         self.assertIn(": modelData.baseColor", qml)
 
+    def test_reference_icon_scale_and_badge_detail_contract(self) -> None:
+        components = ROOT / "iso_builder" / "gui" / "qml" / "components"
+        nav_button = (components / "NavButton.qml").read_text(encoding="utf-8")
+        status_card = (components / "StatusCard.qml").read_text(encoding="utf-8")
+        clay_badge = (components / "ClayBadge.qml").read_text(encoding="utf-8")
+
+        self.assertIn("spacing: 15", nav_button)
+        self.assertIn("width: 24", nav_button)
+        self.assertIn("height: 24", nav_button)
+        self.assertIn("Layout.preferredWidth: 50", status_card)
+        self.assertIn("Layout.preferredHeight: 50", status_card)
+        self.assertIn("iconSize: 27", status_card)
+        self.assertIn('color: "#5cffffff"', clay_badge)
+
+    def test_reference_disc_and_vector_micro_detail_contract(self) -> None:
+        components = ROOT / "iso_builder" / "gui" / "qml" / "components"
+        qml = (
+            ROOT / "iso_builder" / "gui" / "qml" / "Main.qml"
+        ).read_text(encoding="utf-8")
+        disc_art = (components / "DiscArt.qml").read_text(encoding="utf-8")
+        combo_box = (components / "PremiumComboBox.qml").read_text(
+            encoding="utf-8"
+        )
+        check_box = (components / "PremiumCheckBox.qml").read_text(
+            encoding="utf-8"
+        )
+        gradient_button = (components / "GradientButton.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('Qt.resolvedUrl("../assets/icons/disc.svg")', disc_art)
+        self.assertIn("rotation: root.rotationAngle", disc_art)
+        self.assertIn("indicator: Canvas", combo_box)
+        self.assertNotIn('text: "\\u2304"', combo_box)
+        self.assertIn("indicator: Rectangle", check_box)
+        self.assertIn("Canvas {", check_box)
+        self.assertNotIn('text: "\\u2713"', check_box)
+        self.assertIn("property bool showArrow: false", gradient_button)
+        self.assertIn("visible: control.showArrow", gradient_button)
+        self.assertIn("showArrow: !bridge.isBuildRunning", qml)
+        self.assertIn("width: 118", qml)
+
     def test_versioned_compatibility_entrypoint_remains_tkinter(self) -> None:
         launcher = (ROOT / "universal_iso_builder_v1_4_1.py").read_text(
             encoding="utf-8"

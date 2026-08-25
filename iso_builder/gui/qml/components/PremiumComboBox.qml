@@ -23,13 +23,30 @@ ComboBox {
         elide: Text.ElideRight
     }
 
-    indicator: Text {
-        x: control.width - width - 14
+    indicator: Canvas {
+        property color strokeColor: control.enabled
+                                    ? control.textColor
+                                    : control.mutedColor
+
+        x: control.width - width - 15
         y: Math.round((control.height - height) / 2)
-        text: "\u2304"
-        color: control.enabled ? control.textColor : control.mutedColor
-        font.pixelSize: 18
-        font.weight: Font.DemiBold
+        width: 14
+        height: 9
+
+        onStrokeColorChanged: requestPaint()
+        onPaint: {
+            const context = getContext("2d")
+            context.reset()
+            context.strokeStyle = strokeColor
+            context.lineWidth = 2
+            context.lineCap = "round"
+            context.lineJoin = "round"
+            context.beginPath()
+            context.moveTo(2, 2)
+            context.lineTo(width / 2, height - 2)
+            context.lineTo(width - 2, 2)
+            context.stroke()
+        }
     }
 
     background: Rectangle {

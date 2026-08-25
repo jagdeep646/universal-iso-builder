@@ -32,13 +32,27 @@ CheckBox {
                          ? Qt.alpha(control.accentColor, 0.65)
                          : (control.darkSurface ? "#4b536b" : "#cfd2df"))
 
-        Text {
+        Canvas {
+            property color strokeColor: "white"
+
             anchors.centerIn: parent
-            text: "\u2713"
+            width: 17
+            height: 13
             visible: control.checked
-            color: "white"
-            font.pixelSize: 18
-            font.weight: Font.DemiBold
+
+            onPaint: {
+                const context = getContext("2d")
+                context.reset()
+                context.strokeStyle = strokeColor
+                context.lineWidth = 2.6
+                context.lineCap = "round"
+                context.lineJoin = "round"
+                context.beginPath()
+                context.moveTo(2, height * 0.52)
+                context.lineTo(width * 0.40, height - 2)
+                context.lineTo(width - 2, 2)
+                context.stroke()
+            }
         }
 
         Behavior on scale {

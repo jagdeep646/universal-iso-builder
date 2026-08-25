@@ -26,9 +26,10 @@ GlassCard {
             symbol: root.symbol
             iconSource: root.iconSource
             accent: root.accent
-            Layout.preferredWidth: 42
-            Layout.preferredHeight: 42
-            symbolSize: 16
+            Layout.preferredWidth: 50
+            Layout.preferredHeight: 50
+            iconSize: 27
+            symbolSize: 18
         }
 
         ColumnLayout {

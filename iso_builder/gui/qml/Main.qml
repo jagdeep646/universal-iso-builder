@@ -1332,10 +1332,10 @@ ApplicationWindow {
                         }
 
                         DiscArt {
-                            width: 100
-                            height: 100
+                            width: 118
+                            height: 118
                             anchors.right: parent.right
-                            anchors.rightMargin: 45
+                            anchors.rightMargin: 36
                             anchors.verticalCenter: parent.verticalCenter
                             opacity: 0.9
                         }
@@ -1599,6 +1599,7 @@ ApplicationWindow {
                                         text: bridge.isBuildRunning
                                               ? "Cancel Build"
                                               : "Create ISO"
+                                        showArrow: !bridge.isBuildRunning
                                         enabled: bridge.isBuildRunning
                                                  || bridge.canStartBuild
                                         startColor: bridge.isBuildRunning
@@ -1845,13 +1846,10 @@ ApplicationWindow {
                                 Layout.leftMargin: 28
                                 spacing: 12
 
-                                ClayBadge {
+                                DiscArt {
                                     Layout.preferredWidth: 55
                                     Layout.preferredHeight: 55
-                                    iconSource: Qt.resolvedUrl("assets/icons/disc.svg")
-                                    iconSize: 31
-                                    symbolSize: 16
-                                    accent: window.blue
+                                    artSource: Qt.resolvedUrl("assets/icons/disc.svg")
                                 }
                                 ColumnLayout {
                                     Layout.fillWidth: true
