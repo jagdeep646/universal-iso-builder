@@ -1431,7 +1431,7 @@ ApplicationWindow {
                                 Text {
                                     text: "Source Folder"
                                     color: window.muted
-                                    font.pixelSize: 12
+                                    font.pixelSize: 13
                                 }
 
                                 Rectangle {
@@ -1513,7 +1513,7 @@ ApplicationWindow {
                                         Text {
                                             text: "Volume Label"
                                             color: window.muted
-                                            font.pixelSize: 12
+                                            font.pixelSize: 13
                                         }
                                         Rectangle {
                                             Layout.fillWidth: true
@@ -1539,7 +1539,7 @@ ApplicationWindow {
                                         Text {
                                             text: "Build Profile"
                                             color: window.muted
-                                            font.pixelSize: 12
+                                            font.pixelSize: 13
                                         }
                                         Rectangle {
                                             Layout.fillWidth: true
