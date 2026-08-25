@@ -314,7 +314,10 @@ class QtGuiContractTests(unittest.TestCase):
         self.assertIn("property bool showArrow: false", gradient_button)
         self.assertIn("visible: control.showArrow", gradient_button)
         self.assertIn("showArrow: !bridge.isBuildRunning", qml)
-        self.assertIn("width: 118", qml)
+        self.assertIn("id: heroArtwork", qml)
+        self.assertIn("id: heroPedestal", qml)
+        self.assertIn("width: 170", qml)
+        self.assertIn("width: 270", qml)
 
     def test_versioned_compatibility_entrypoint_remains_tkinter(self) -> None:
         launcher = (ROOT / "universal_iso_builder_v1_4_1.py").read_text(

@@ -1331,13 +1331,68 @@ ApplicationWindow {
                             }
                         }
 
-                        DiscArt {
-                            width: 118
-                            height: 118
+                        Item {
+                            id: heroArtwork
+                            width: 300
+                            height: 190
                             anchors.right: parent.right
-                            anchors.rightMargin: 36
+                            anchors.rightMargin: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            opacity: 0.9
+
+                            Rectangle {
+                                id: heroPedestal
+                                width: 270
+                                height: 100
+                                radius: 50
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 2
+                                color: window.darkMode ? "#35405b" : "#d9cec9"
+                                gradient: Gradient {
+                                    GradientStop {
+                                        position: 0.0
+                                        color: window.darkMode
+                                               ? "#59627a"
+                                               : "#fff4e8"
+                                    }
+                                    GradientStop {
+                                        position: 1.0
+                                        color: window.darkMode
+                                               ? "#242d47"
+                                               : "#cbbdb8"
+                                    }
+                                }
+                                layer.enabled: true
+                                layer.effect: MultiEffect {
+                                    shadowEnabled: true
+                                    shadowColor: window.darkMode
+                                                 ? "#5c000000"
+                                                 : "#3d6c5677"
+                                    shadowBlur: 0.75
+                                    shadowVerticalOffset: 9
+                                }
+
+                                Rectangle {
+                                    width: parent.width * 0.76
+                                    height: parent.height * 0.48
+                                    radius: height / 2
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 8
+                                    color: window.darkMode
+                                           ? "#245f6984"
+                                           : "#66ffffff"
+                                }
+                            }
+
+                            DiscArt {
+                                width: 170
+                                height: 170
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: parent.top
+                                anchors.topMargin: -5
+                                opacity: 0.94
+                            }
                         }
                     }
 
