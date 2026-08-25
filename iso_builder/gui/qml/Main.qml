@@ -26,7 +26,7 @@ ApplicationWindow {
     readonly property color cardColor: darkMode ? "#e8232941" : "#f2e8e7ee"
     readonly property color cardEdge: darkMode ? "#3e495f78" : "#9affffff"
     readonly property color ink: darkMode ? "#f4f3ff" : "#17204f"
-    readonly property color muted: darkMode ? "#aeb5d1" : "#666b88"
+    readonly property color muted: darkMode ? "#aeb5d1" : "#626578"
     readonly property color purple: "#7a55f4"
     readonly property color blue: "#398df7"
     readonly property color cyan: "#32c6ea"
