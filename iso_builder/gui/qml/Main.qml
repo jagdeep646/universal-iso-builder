@@ -1402,14 +1402,16 @@ ApplicationWindow {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        Layout.preferredHeight: 402
                         Layout.minimumHeight: 270
-                        spacing: 12
+                        Layout.maximumHeight: 402
+                        Layout.topMargin: 11
+                        spacing: 18
 
                         GlassCard {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            Layout.preferredWidth: 2.05
+                            Layout.preferredWidth: 1.94
                             fillColor: window.cardColor
                             edgeColor: window.cardEdge
                             darkSurface: window.darkMode
@@ -1616,7 +1618,7 @@ ApplicationWindow {
                         GlassCard {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            Layout.preferredWidth: 0.95
+                            Layout.preferredWidth: 1.0
                             fillColor: window.cardColor
                             edgeColor: window.cardEdge
                             darkSurface: window.darkMode
@@ -1747,8 +1749,10 @@ ApplicationWindow {
 
                     GlassCard {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 90
+                        Layout.preferredHeight: 157
                         Layout.minimumHeight: 90
+                        Layout.maximumHeight: 157
+                        Layout.topMargin: 5
                         fillColor: window.cardColor
                         edgeColor: window.cardEdge
                         darkSurface: window.darkMode
@@ -1831,7 +1835,9 @@ ApplicationWindow {
                             }
 
                             RowLayout {
-                                Layout.preferredWidth: 260
+                                Layout.preferredWidth: 334
+                                Layout.minimumWidth: 334
+                                Layout.maximumWidth: 334
                                 spacing: 12
 
                                 ClayBadge {
@@ -1869,6 +1875,8 @@ ApplicationWindow {
                             }
                         }
                     }
+
+                    Item { Layout.fillHeight: true }
                 }
             }
         }
